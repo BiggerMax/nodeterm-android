@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- QR scanning is optional (pasting the pairing code is the fallback), and dictation
+         degrades gracefully — so neither camera nor microphone hardware is required. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- P3 dictation: voice-to-text for the terminal input bar (runtime grant). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Local notifications for host pushes / NEEDS YOU events (API 33+ runtime grant). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Cleartext is needed for ONE thing: the one-shot LAN pairing POST to
+      `http://<host>:<pairPort>/pair` (the relay itself is always wss://). The pairing request
+      body is an E2EE-sealed box, so the single-use token never crosses the LAN in plaintext;
+      Android 9+ blocks cleartext by default, which would otherwise fail pairing on release
+      builds (the debug overlay already opts in).
+    -->
+    <application
+        android:name=".NodetermApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Nodeterm"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Nodeterm"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+              Deep link: `nodeterm://pair?code=…` (a flat relay offer or a v0.2.37 host payload).
+              Mirrors the reference's custom-scheme pairing entry — how the phone pairs without
+              typing; also used by the scanner/paste fallback on this build.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nodeterm" android:host="pair" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Host-push entry point (FCM). With a google-services.json wired into the build this
+          receives host pushes (RUNNING / NEEDS YOU / done); without one Firebase is never
+          initialized and the service stays dormant — the app keeps working over the relay.
+        -->
+        <service
+            android:name=".notify.NodetermMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>

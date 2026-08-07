@@ -1,0 +1,20 @@
+*.iml
+.gradle/
+build/
+local.properties
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+app/google-services.json
+
+# Local tooling (nodeterm canvas workspace, reasonix task history, agent config, kotlin cache)
+.nodeterm/
+.reasonix/
+.claude/
+.kotlin/
+reasonix.toml

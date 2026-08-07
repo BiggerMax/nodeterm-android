@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">nodeterm</string>
+    <string name="notification_channel_name">Host events</string>
+    <string name="notification_channel_desc">Needs-you, running and done events pushed from your host</string>
+</resources>
