@@ -177,6 +177,7 @@ class MainActivity : ComponentActivity() {
                                 status = ui.status,
                                 previews = ui.boardPreviews,
                                 nodeNames = ui.nodeNames,
+                                nodeNow = ui.nodeNow,
                                 kanban = ui.kanban,
                                 onOpenNode = { node ->
                                     viewModel.openNode(node)
@@ -227,6 +228,7 @@ class MainActivity : ComponentActivity() {
                                 NodeDetailScreen(
                                     state = terminal,
                                     nodeStatus = ui.status[terminal.nodeId] ?: com.nodeterm.android.core.model.NodeStatus.IDLE,
+                                    nodeNow = ui.nodeNow[terminal.nodeId],
                                     onBack = {
                                         viewModel.closeTerminal()
                                         nav.popBackStack()

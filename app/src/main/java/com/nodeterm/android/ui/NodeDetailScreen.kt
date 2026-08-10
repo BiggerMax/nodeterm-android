@@ -54,9 +54,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
+import com.nodeterm.android.core.model.InboxNodeNow
 import com.nodeterm.android.core.model.NodeStatus
 
 /**
@@ -73,6 +75,7 @@ import com.nodeterm.android.core.model.NodeStatus
 fun NodeDetailScreen(
     state: TerminalState,
     nodeStatus: NodeStatus,
+    nodeNow: InboxNodeNow?,
     onBack: () -> Unit,
     onSendInput: (String) -> Unit,
     onScroll: (dir: String) -> Unit,
@@ -116,6 +119,13 @@ fun NodeDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            // Voice dictation — the mobile mirror of the desktop's ⌘⇧D (speak, review, then send).
+            if (!state.ended && state.streamId != null) {
+                DictationButton(
+                    modifier = Modifier.size(40.dp),
+                    onText = { text -> onSendInput("$text\n") }
+                )
+            }
             StatusBadge(nodeStatus)
         }
 
@@ -123,6 +133,10 @@ fun NodeDetailScreen(
         if (nodeStatus == NodeStatus.NEEDS_YOU) {
             NeedsYouBar(onAnswer)
         }
+
+        // What the agent is doing right now + its context-window fill — the desktop's per-node
+        // context meter, fed by the host mirror's `inbox.nodes[<nodeId>]`.
+        NodeNowPanel(nodeNow)
 
         // Terminal viewport — tapping it pops the IME and routes input to the pty.
         TapToTypeTerminal(
@@ -286,6 +300,53 @@ private fun TapToTypeTerminal(
             ),
             keyboardActions = KeyboardActions(onSend = { onSendInput("\n") })
         )
+    }
+}
+
+/**
+ * The agent's live status line: a "NOW" headline (what tool it's running — "Editing foo.ts",
+ * "Running npm test", or the current turn's "You: …" prompt) plus a context-window meter. Only
+ * rendered when the host mirror carries the data; terminal nodes without an agent show nothing.
+ */
+@Composable
+private fun NodeNowPanel(now: InboxNodeNow?) {
+    val activity = now?.activity?.takeIf { it.isNotBlank() }
+    val ctx = now?.contextPercent
+    val prompt = now?.prompt?.takeIf { it.isNotBlank() }
+    if (activity == null && ctx == null && prompt == null) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        val headline = activity ?: prompt?.let { "You: $it" }
+        if (headline != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "NOW",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = headline,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        if (ctx != null) {
+            Spacer(Modifier.height(5.dp))
+            ContextMeter(percent = ctx)
+        }
     }
 }
 

@@ -262,7 +262,8 @@ fun KanbanBoard(
                             kind = node.kind,
                             agentId = node.agentId,
                             cwd = node.cwd,
-                            projectName = board.activeProjectName
+                            projectName = board.activeProjectName,
+                            color = node.color
                         )
                     )
                 }

@@ -1,10 +1,13 @@
 package com.nodeterm.android.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -14,8 +17,10 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,7 +29,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -87,6 +95,7 @@ fun PairingScreen(onCode: (String) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -107,18 +116,39 @@ fun PairingScreen(onCode: (String) -> Unit) {
         if (cameraGranted) {
             QrScanView(onDecoded = { code -> onCode(code) })
         } else {
-            Box(
+            // Camera denied — never a dead end: retry the grant or jump to system settings, and
+            // the paste box below still works without a camera at all.
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "Camera permission needed\nto scan the pairing QR code",
+                    text = "Camera permission is off — scanning needs the camera.\nYou can still paste the pairing code below.",
                     textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 24.dp)
                 )
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+                        Text("Try again", fontSize = 12.sp)
+                    }
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            )
+                        }
+                    ) { Text("Open settings", fontSize = 12.sp) }
+                }
             }
         }
 
@@ -144,12 +174,58 @@ fun PairingScreen(onCode: (String) -> Unit) {
         ) {
             Text("Connect")
         }
+
+        Spacer(Modifier.height(16.dp))
+        PairingSteps()
         Spacer(Modifier.height(8.dp))
-        Text(
-            text = "On your host: Settings → Phone → Show pairing code",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    }
+}
+
+/** Three-step pairing guide — mirrors the desktop flow (show QR → scan/paste → compare SAS). */
+@Composable
+private fun PairingSteps() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                RoundedCornerShape(12.dp)
+            )
+            .padding(12.dp)
+    ) {
+        StepRow(1, "On your host", "Settings → Phone → Show pairing code")
+        Spacer(Modifier.height(8.dp))
+        StepRow(2, "On this phone", "Scan the QR or paste the code below")
+        Spacer(Modifier.height(8.dp))
+        StepRow(3, "Compare codes", "Confirm the 6-digit code matches on both")
+    }
+}
+
+@Composable
+private fun StepRow(number: Int, title: String, detail: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .background(MaterialTheme.colorScheme.primary, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                number.toString(),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimary
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                detail,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -223,10 +299,37 @@ private fun QrScanView(onDecoded: (String) -> Unit) {
                 .fillMaxSize()
                 .background(Color.Black, RoundedCornerShape(16.dp))
         )
+        // Visible scan window: scrims darken the frame outside a centred 220dp window, a crisp
+        // border marks the scan area, and a hint says what to point at — desktop/iOS camera style.
+        ScanOverlay()
+    }
+}
+
+/** Scrim + scan-window frame + "point at the QR" hint over the live camera preview. */
+@Composable
+private fun ScanOverlay() {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val win = 220.dp
+        val side = (maxWidth - win) / 2
+        val topH = (maxHeight - win) / 2
+        val scrim = Color.Black.copy(alpha = 0.45f)
+        Box(Modifier.align(Alignment.TopCenter).width(maxWidth).height(topH).background(scrim))
+        Box(Modifier.align(Alignment.BottomCenter).width(maxWidth).height(topH).background(scrim))
+        Box(Modifier.align(Alignment.CenterStart).width(side).height(win).background(scrim))
+        Box(Modifier.align(Alignment.CenterEnd).width(side).height(win).background(scrim))
         Box(
+            Modifier
+                .align(Alignment.Center)
+                .size(win)
+                .border(1.5.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+        )
+        Text(
+            "Point at the pairing QR on your host",
+            fontSize = 12.sp,
+            color = Color.White.copy(alpha = 0.9f),
             modifier = Modifier
-                .size(220.dp)
-                .background(Color.Transparent)
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 10.dp)
         )
     }
 }

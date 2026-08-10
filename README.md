@@ -5,9 +5,10 @@ Native Android (Kotlin + Jetpack Compose) companion client for
 P1 + P2 + P3 of `docs/ANDROID_CLIENT_SPEC.md`: **QR pairing → persistent E2EE relay session →
 project/node list → agent status stream (RUNNING / NEEDS YOU) → FULL terminal rendering (VT
 state machine, colours, scrollback via tmux) → answer NEEDS YOU → mobile board view → read-only
-remote/SSH file browsing + git status/diff → dictation → host-push entry point**. On top of the
-relay (Pro/entitled hosts), the client also speaks the **LAN / SSH direct transport** — the same
-free-tier path the iOS client uses, with no relay and no Pro required.
+remote/SSH file browsing + git status/diff → markdown preview → dictation → command palette →
+host-push entry point**. On top of the relay (Pro/entitled hosts), the client also speaks the
+**LAN / SSH direct transport** — the same free-tier path the iOS client uses, with no relay and
+no Pro required.
 
 The wire protocol is implemented byte-for-byte against the nodeterm reference source
 (`src/main/remote/*`); the E2EE / framing / relay state machine unit tests pass against vectors
@@ -18,8 +19,8 @@ own ANSI-behaviour test suite.
 
 | Module | Kind | Contents |
 |--------|------|----------|
-| `:core` | pure Kotlin/JVM, **Android-free** | NaCl box E2EE + HKDF-SHA256, 16-byte terminal framing, RPC envelope + relay state machine (injectable transport), pairing offer / workspace / canvas / agent-status mirror / inbox models, **VT100/xterm terminal emulator** (screen + parser + scrollback + alternate buffer), **git status models + per-line syntax highlighter**, **LAN command builders + parsers** (tmux/ssh-fs wire shapes, v3→v2 workspace assembly) |
-| `:app` | Android application | OkHttp WebSocket transport, **sshj LAN/SSH transport** (ed25519 auth, TOFU host-key pinning, tmux PTY terminal attach), Keystore-backed session persistence (relay + LAN credentials), Compose UI (pairing/SAS/home/nodes/**full terminal renderer + dictation**/inbox/**board**/**file browser + syntax-highlighted viewer + git status/diff**/settings), FCM messaging service + local notifications |
+| `:core` | pure Kotlin/JVM, **Android-free** | NaCl box E2EE + HKDF-SHA256, 16-byte terminal framing, RPC envelope + relay state machine (injectable transport), pairing offer / workspace / canvas / agent-status mirror / inbox models (incl. per-node "now" activity + context meter), **VT100/xterm terminal emulator** (screen + parser + scrollback + alternate buffer), **git status models + per-line syntax highlighter**, **lightweight markdown renderer**, **LAN command builders + parsers** (tmux/ssh-fs wire shapes, v3→v2 workspace assembly) |
+| `:app` | Android application | OkHttp WebSocket transport, **sshj LAN/SSH transport** (ed25519 auth, TOFU host-key pinning, tmux PTY terminal attach), Keystore-backed session persistence (relay + LAN credentials), Compose UI (pairing/SAS/home/nodes/**full terminal renderer + dictation**/inbox/**board**/**file browser + syntax-highlighted viewer + markdown view + git status/diff**/**⌘K command palette**/settings), FCM messaging service + local notifications |
 
 ## Build
 
@@ -169,6 +170,20 @@ X25519 is available, else ECDH-NIST P-256/384/521 — both supported by macOS ss
   live partial results land in the field, then Send.
 - **Subscription polish** — closing a terminal (or switching nodes) sends `pty.kill {streamId}`
   so the host drops the detached pty and stops streaming; no more leaked streams.
+- **Markdown preview** — `.md` / `README` files in the file browser render through a tiny
+  dependency-free renderer (`:core/text/Markdown.kt`, the mobile ⌘M mirror) instead of the raw
+  code view: headings, lists, quotes, fenced code, inline bold/italic/links — pure data in,
+  Compose styles out.
+- **Command palette (⌘K)** — a swipe/keyboard-openable overlay that jumps anywhere: open any
+  terminal/agent node, browse a project's files, or run app actions (board / settings / re-pair).
+  Type to filter, Enter or tap to activate, Esc to close — desktop muscle memory on touch.
+- **Node-kind visual language** — every node kind (terminal, agent, note, group, editor, diff,
+  web, video) carries the desktop's icon + accent colour everywhere (home list, board, kanban),
+  driven by one source of truth (`ui/NodeKind.kt`); board cards now render per-kind: sticky notes,
+  group containers, editor/diff/web cards with kind glyphs.
+- **Per-node "now" meter** — the host mirror's per-node activity line ("Running npm test") and
+  context-window fill show on node cards and the board; inbox shape parsing tolerates both the
+  current host object shape and the legacy bare-array shape so a mismatch never drops every badge.
 
 ## Boundaries (explicitly not done)
 

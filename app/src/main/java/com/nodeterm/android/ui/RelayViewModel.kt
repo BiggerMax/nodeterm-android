@@ -10,6 +10,7 @@ import com.nodeterm.android.core.model.CanvasNode
 import com.nodeterm.android.core.model.GitFileChange
 import com.nodeterm.android.core.model.GitStatus
 import com.nodeterm.android.core.model.InboxEvent
+import com.nodeterm.android.core.model.InboxNodeNow
 import com.nodeterm.android.core.model.Kanban
 import com.nodeterm.android.core.model.KanbanCardMeta
 import com.nodeterm.android.core.model.KanbanColumn
@@ -41,7 +42,9 @@ data class NodeRow(
     val kind: String,
     val agentId: String?,
     val cwd: String?,
-    val projectName: String
+    val projectName: String,
+    /** The node's canvas colour (`#rrggbb`) — surfaces it as an accent on cards (desktop parity). */
+    val color: String = ""
 )
 
 /** Read model for the Trello-style board of the active project (see `Kanban` in :core). */
@@ -118,6 +121,8 @@ data class GitDiffState(
 data class RelayUiState(
     val phase: Phase = Phase.NO_SESSION,
     val sas: String = "",
+    /** The transport this session rides on: relay `wss://…` or `ssh://user@host:port` (LAN). */
+    val relayEndpoint: String = "",
     val connected: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
@@ -128,6 +133,8 @@ data class RelayUiState(
     val status: Map<String, NodeStatus> = emptyMap(),
     val nodeNames: Map<String, String> = emptyMap(),
     val inbox: List<InboxEvent> = emptyList(),
+    /** nodeId → "what it's doing right now" + context-window fill (mirror inbox.nodes). */
+    val nodeNow: Map<String, InboxNodeNow> = emptyMap(),
     /** nodeId → most recent inbox snippet (detail, title as fallback) for the board's card preview. */
     val boardPreviews: Map<String, String> = emptyMap(),
     val terminal: TerminalState? = null,
@@ -182,12 +189,15 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         val lan = store.loadLan()
         if (store.prefersLan() && lan != null) {
             lanSession = lan
-            _ui.update { it.copy(phase = Phase.CONNECTING) }
+            _ui.update {
+                it.copy(phase = Phase.CONNECTING, relayEndpoint = lanEndpoint(lan))
+            }
             connectLan()
         } else {
             store.load()?.let { stored ->
                 offer = stored.offer
                 keys = stored.keys
+                _ui.update { st -> st.copy(relayEndpoint = stored.offer.relayEndpoint) }
                 // Best-effort: the LAN creds were persisted by the pairing that produced this
                 // offer, so a failed relay restore may fall back to them (same host).
                 lanFallbackArmed = store.loadLan() != null
@@ -195,7 +205,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 connect()
             } ?: lan?.let {
                 lanSession = it
-                _ui.update { it.copy(phase = Phase.CONNECTING) }
+                _ui.update { st -> st.copy(phase = Phase.CONNECTING, relayEndpoint = lanEndpoint(it)) }
                 connectLan()
             }
         }
@@ -224,7 +234,15 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         // (v0.2.37 standing host pins the client pubkey on first approval).
         keys = stableKeys()
         store.save(newOffer, keys!!)
-        _ui.update { it.copy(phase = Phase.CONNECTING, error = null, notice = null, disconnectReason = null) }
+        _ui.update {
+            it.copy(
+                phase = Phase.CONNECTING,
+                relayEndpoint = newOffer.relayEndpoint,
+                error = null,
+                notice = null,
+                disconnectReason = null
+            )
+        }
         connect()
     }
 
@@ -265,6 +283,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     store.setPreferLan(true)
                     lanSession = lanCreds
+                    // connectLan() publishes the endpoint (and the LAN display label).
                     connectLan()
                     return@launch
                 }
@@ -273,6 +292,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 keys = stableKeys()
                 store.setPreferLan(false)
                 store.save(deviceOffer, keys!!)
+                _ui.update { st -> st.copy(relayEndpoint = deviceOffer.relayEndpoint) }
                 android.util.Log.i("NodetermPair", "device offer saved — connecting to ${relay.relayEndpoint}")
                 connect()
             } catch (e: Exception) {
@@ -289,6 +309,10 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The persisted device keypair, or a fresh one on first use (kept stable for host pinning). */
     private fun stableKeys(): E2ee.KeyPair = store.load()?.keys ?: E2ee.generateKeyPair()
+
+    /** Display label for the direct LAN / SSH transport (`ssh://user@host:port`). */
+    private fun lanEndpoint(lan: SessionStore.LanSession): String =
+        "ssh://${lan.user}@${lan.host}:${lan.port}"
 
     private fun deviceName(): String = Build.MODEL.ifBlank { "Android" }
 
@@ -610,6 +634,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         val lan = lanSession ?: return
         sawReady = false
         userInitiatedTearDown = false
+        _ui.update { it.copy(relayEndpoint = lanEndpoint(lan)) }
         manager?.close()
         lateinit var m: LanSessionManager
         m = LanSessionManager(scope, lan, store) { event -> if (manager === m) handleEvent(event) }
@@ -639,6 +664,8 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 val mirror = event.mirror
                 val status = mirror?.nodes?.mapValues { (_, n) -> NodeStatus.fromMirrorState(n.state) } ?: emptyMap()
                 val names = mirror?.nodes?.mapNotNull { (id, n) -> n.name?.let { id to it } }?.toMap() ?: emptyMap()
+                // Decode once — the event feed feeds both the inbox list and the card previews.
+                val inboxEvents = mirror?.inboxEvents() ?: emptyList()
                 _ui.update {
                     // Build the new projects list first so `nodes` reflects host-driven deletions
                     // (re-deriving from `it.projects` would re-freeze stale rows from the prior
@@ -657,8 +684,9 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                         nodes = buildNodes(newProjects),
                         status = status,
                         nodeNames = names,
-                        inbox = mirror?.inbox ?: emptyList(),
-                        boardPreviews = latestSnippets(mirror?.inbox ?: emptyList()),
+                        inbox = inboxEvents,
+                        nodeNow = mirror?.nodeNow() ?: emptyMap(),
+                        boardPreviews = latestSnippets(inboxEvents),
                         activeProjectId = activeId,
                         board = newBoard,
                         kanban = buildKanban(newProjects, activeId, newBoard.map { n -> n.id })
@@ -797,7 +825,8 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                         kind = node.kind,
                         agentId = node.agentId,
                         cwd = node.cwd,
-                        projectName = project.name
+                        projectName = project.name,
+                        color = node.color
                     )
                 )
             }

@@ -1,24 +1,43 @@
 package com.nodeterm.android.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.ViewKanban
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -26,10 +45,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,52 +75,93 @@ fun HomeScreen(
     onRepair: (() -> Unit)? = null
 ) {
     var tab by remember { mutableIntStateOf(0) }
+    // The mobile ⌘K — search anywhere (nodes, project files, actions) from the header.
+    var paletteOpen by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
+        // Header: wordmark + live connection dot, then palette / board / settings actions.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
                 Text("nodeterm", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Text(
-                    text = when {
-                        state.connected -> "Connected to host"
-                        state.phase == Phase.CONNECTING -> "Connecting to host…"
-                        else -> "Disconnected"
-                    },
-                    fontSize = 12.sp,
-                    color = if (state.connected) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    when {
+                        state.connected -> {
+                            PulsingDot(Color(0xFF4ADE80))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Connected to host", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        state.phase == Phase.CONNECTING -> {
+                            Text("Connecting to host…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        else -> {
+                            PulsingDot(MaterialTheme.colorScheme.error, steady = true)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Disconnected", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
             }
-            if (state.phase == Phase.DISCONNECTED && onRepair != null) {
-                TextButton(onClick = onRepair) { Text("Re-pair") }
+            // NOTE: the docked recovery banner below owns the Re-pair CTA when disconnected — a
+            // header button here would be a third duplicate (banner + empty state + header).
+            IconButton(onClick = { paletteOpen = true }) {
+                Icon(Icons.Outlined.Search, contentDescription = "Jump to…", modifier = Modifier.size(20.dp))
             }
-            TextButton(onClick = onOpenBoard) { Text("Board") }
-            TextButton(onClick = onSettings) { Text("Settings") }
+            IconButton(onClick = onOpenBoard) {
+                Icon(Icons.Outlined.ViewKanban, contentDescription = "Board", modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Outlined.Settings, contentDescription = "Settings", modifier = Modifier.size(20.dp))
+            }
         }
 
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Nodes (${state.nodes.size})") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Needs you (${state.inbox.count { it.kind != "done" }})") })
+            val needsCount = state.inbox.count { it.kind != "done" }
+            Tab(
+                selected = tab == 1,
+                onClick = { tab = 1 },
+                text = {
+                    Text(
+                        "Needs you ($needsCount)",
+                        color = if (needsCount > 0) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (needsCount > 0) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            )
         }
 
         when (tab) {
-            0 -> NodesTab(state, onOpenNode, onBrowse)
+            0 -> NodesTab(state, onOpenNode, onBrowse, onRepair)
             1 -> InboxTab(state, onAnswer, onAnswerQuestion)
         }
 
         if (state.phase == Phase.DISCONNECTED) {
-            // Docked recovery bar: the connection dropped — explain why (nodes may still be
-            // cached from the previous session, so show the reason regardless of node count).
+            // Docked recovery banner: the connection dropped — explain why (nodes may still be
+            // cached from the previous session, so show the reason regardless of node count) and
+            // offer the one-tap fix. Styled like the desktop's announcement banners (icon + text
+            // + action) instead of a bare red line.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Icon(
+                    Icons.Outlined.CloudOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(
                     text = state.disconnectReason ?: "Connection to the host was lost.",
                     modifier = Modifier.weight(1f),
@@ -104,8 +170,41 @@ fun HomeScreen(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (onRepair != null) {
+                    Spacer(Modifier.width(6.dp))
+                    TextButton(onClick = onRepair) {
+                        Text("Re-pair", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
         }
+    }
+
+    if (paletteOpen) {
+        CommandPalette(
+            nodes = state.nodes,
+            projects = state.projects,
+            connected = state.connected,
+            onOpenNode = onOpenNode,
+            onBrowseProject = { project ->
+                project.cwd?.takeIf { it.isNotBlank() }?.let { cwd ->
+                    onBrowse(
+                        NodeRow(
+                            nodeId = "",
+                            title = project.name.ifBlank { project.id },
+                            kind = "terminal",
+                            agentId = null,
+                            cwd = cwd,
+                            projectName = project.name
+                        )
+                    )
+                }
+            },
+            onOpenBoard = onOpenBoard,
+            onSettings = onSettings,
+            onRePair = { onRepair?.invoke() },
+            onDismiss = { paletteOpen = false }
+        )
     }
 }
 
@@ -114,19 +213,39 @@ fun HomeScreen(
 private fun NodesTab(
     state: RelayUiState,
     onOpenNode: (NodeRow) -> Unit,
-    onBrowse: (NodeRow) -> Unit
+    onBrowse: (NodeRow) -> Unit,
+    onRepair: (() -> Unit)?
 ) {
     if (state.nodes.isEmpty()) {
-        EmptyState(
-            if (state.phase == Phase.DISCONNECTED) "Connection dropped" else "No nodes yet",
-            if (state.phase == Phase.DISCONNECTED) "Re-pair with your host to see its projects." else "Start a terminal on your host — it will appear here."
-        )
+        if (state.phase == Phase.DISCONNECTED) {
+            EmptyState(
+                title = "Connection dropped",
+                subtitle = state.disconnectReason
+                    ?: "Re-pair with your host to see its projects again.",
+                icon = Icons.Outlined.CloudOff,
+                actionLabel = "Re-pair",
+                onAction = onRepair
+            )
+        } else {
+            EmptyState(
+                title = "No nodes yet",
+                subtitle = "Start a terminal on your host — it will appear here. Sticky notes, agents and editors show up too.",
+                icon = Icons.Outlined.Terminal
+            )
+        }
         return
     }
     // Group the flat node list by project directory. nodeterm's "project" is a directory on the
     // host, and `projectName` is its display name (fall back to the node's cwd when it is blank).
     // The flat list is already sorted (status first, then title) in the ViewModel, so `groupBy`
     // preserves that order within each group; we only reorder groups alphabetically.
+    // projectName → canvas colour for the section dots. Keyed exactly like the group key below
+    // (name, falling back to cwd, then id) so blank-name projects still get their colour.
+    val projectColors = remember(state.projects) {
+        state.projects.associate { p ->
+            (p.name.ifBlank { p.cwd?.ifBlank { null } ?: p.id }) to p.color
+        }
+    }
     val groups = remember(state.nodes) {
         state.nodes
             .groupBy { it.projectName.ifBlank { it.cwd ?: "Other" } }
@@ -135,18 +254,29 @@ private fun NodesTab(
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         groups.forEach { (dir, nodes) ->
             item(key = "dir:$dir") {
-                ProjectHeader(dir, nodes.size)
+                ProjectHeader(
+                    title = dir,
+                    count = nodes.size,
+                    colorHex = projectColors[dir]
+                )
             }
             items(nodes, key = { it.nodeId }) { node ->
+                val now = state.nodeNow[node.nodeId]
                 NodeCard(
                     node = node,
                     status = state.status[node.nodeId] ?: NodeStatus.IDLE,
                     name = state.nodeNames[node.nodeId] ?: node.title,
+                    // What the agent is doing right now ("Running npm test") — the mirror's
+                    // per-node `now` block; desktop parity for the node-card meta line.
+                    activity = now?.activity,
+                    // Per-node context-window fill — the same meter the desktop paints on agent
+                    // cards, now on the phone's list too.
+                    contextPercent = now?.contextPercent,
                     onOpenNode = onOpenNode,
                     onBrowse = onBrowse
                 )
@@ -155,9 +285,9 @@ private fun NodesTab(
     }
 }
 
-/** Sticky section header for one project directory, with its node count. */
+/** Sticky section header for one project directory: project colour dot + name + node count. */
 @Composable
-private fun ProjectHeader(title: String, count: Int) {
+private fun ProjectHeader(title: String, count: Int, colorHex: String?) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -165,6 +295,17 @@ private fun ProjectHeader(title: String, count: Int) {
             .padding(start = 6.dp, top = 10.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (!colorHex.isNullOrBlank()) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .background(
+                        parseNodeColor(colorHex, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                        RoundedCornerShape(50)
+                    )
+            )
+            Spacer(Modifier.width(7.dp))
+        }
         Text(
             text = title,
             fontWeight = FontWeight.Bold,
@@ -182,78 +323,168 @@ private fun ProjectHeader(title: String, count: Int) {
     }
 }
 
-/** One node row: title + kind tag, project/agent meta, cwd, status badge and Files button. */
+/**
+ * One node row: kind icon + title + kind tag, project/agent meta, live activity line, cwd, a
+ * node-colour accent bar on the left edge (desktop canvas parity), a context meter for agent
+ * nodes, status badge and Files button. Long-press opens a quick-actions sheet (the mobile
+ * mirror of the desktop's right-click node menu).
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun NodeCard(
     node: NodeRow,
     status: NodeStatus,
     name: String,
+    activity: String?,
+    contextPercent: Int?,
     onOpenNode: (NodeRow) -> Unit,
     onBrowse: (NodeRow) -> Unit
 ) {
+    val clipboard = LocalClipboardManager.current
+    var showActions by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
+
     Card(
-        onClick = { onOpenNode(node) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { onOpenNode(node) },
+                onLongClick = { showActions = true }
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
-            modifier = Modifier
+            Modifier
                 .fillMaxWidth()
-                .padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .height(IntrinsicSize.Min)
         ) {
-            Column(Modifier.weight(1f)) {
-                // Title row: name + kind tag (non-terminal nodes get a label).
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            // Left edge accent in the node's canvas colour (only when the host provides one).
+            if (!node.color.isNullOrBlank()) {
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .fillMaxHeight()
+                        .background(parseNodeColor(node.color, Color.Transparent))
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    // Title row: kind icon + name + kind tag (non-terminal nodes get a label).
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        KindIcon(node.kind)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = name,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (NodeKinds.normalize(node.kind) !in NodeKinds.TERMINAL_LIKE) {
+                            Spacer(Modifier.width(6.dp))
+                            KindTag(node.kind)
+                        }
+                    }
+                    // Project / agent line — the agent's live activity rides the same meta row
+                    // ("My App · • Running npm test"), mirroring the desktop's node card.
+                    val meta = listOfNotNull(
+                        node.projectName.ifBlank { null },
+                        node.agentId?.let { "agent: $it" },
+                        activity?.takeIf { it.isNotBlank() }?.let { "• $it" }
+                    ).joinToString(" · ")
+                    if (meta.isNotBlank()) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = meta,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    // cwd on its own monospace line — the most useful signal for picking a node.
+                    if (!node.cwd.isNullOrBlank()) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = node.cwd,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    // The desktop's per-node context meter — a thin fill bar on the card.
+                    if (contextPercent != null) {
+                        Spacer(Modifier.height(6.dp))
+                        ContextMeter(percent = contextPercent)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                StatusBadge(status)
+                if (node.cwd != null) {
+                    Spacer(Modifier.width(4.dp))
+                    TextButton(
+                        onClick = { onBrowse(node) },
+                        modifier = Modifier.padding(0.dp)
+                    ) {
+                        Text("Files", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
+
+    // Quick actions (long-press): the desktop's right-click node menu, on a phone sheet.
+    if (showActions) {
+        ModalBottomSheet(
+            onDismissRequest = { showActions = false },
+            sheetState = sheetState
+        ) {
+            Column(Modifier.padding(bottom = 20.dp)) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    KindIcon(node.kind)
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = name,
+                        name,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (node.kind != "terminal") {
-                        Spacer(Modifier.width(6.dp))
-                        KindTag(node.kind)
-                    }
-                }
-                // Project / agent line.
-                val meta = listOfNotNull(
-                    node.projectName.ifBlank { null },
-                    node.agentId?.let { "agent: $it" }
-                ).joinToString(" · ")
-                if (meta.isNotBlank()) {
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = meta,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.weight(1f)
                     )
                 }
-                // cwd on its own monospace line — the most useful signal for picking a node.
-                if (!node.cwd.isNullOrBlank()) {
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = node.cwd,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            StatusBadge(status)
-            if (node.cwd != null) {
-                Spacer(Modifier.width(4.dp))
                 TextButton(
-                    onClick = { onBrowse(node) },
-                    modifier = Modifier.padding(0.dp)
-                ) {
-                    Text("Files", fontSize = 12.sp)
+                    onClick = {
+                        showActions = false
+                        onOpenNode(node)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Open terminal") }
+                if (node.cwd != null) {
+                    TextButton(
+                        onClick = {
+                            showActions = false
+                            onBrowse(node)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Browse files") }
+                    TextButton(
+                        onClick = {
+                            showActions = false
+                            clipboard.setText(AnnotatedString(node.cwd))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Copy path") }
                 }
             }
         }
@@ -268,12 +499,16 @@ private fun InboxTab(
 ) {
     val actionable = state.inbox.filter { it.kind != "done" }
     if (actionable.isEmpty()) {
-        EmptyState("Nothing needs you", "When an agent needs approval or asks a question, it lands here.")
+        EmptyState(
+            title = "Nothing needs you",
+            subtitle = "When an agent needs approval or asks a question, it lands here.",
+            icon = Icons.Outlined.CheckCircle
+        )
         return
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(actionable, key = { it.id }) { event ->
@@ -370,19 +605,51 @@ private fun InboxCard(
 }
 
 @Composable
-private fun EmptyState(title: String, subtitle: String) {
+private fun EmptyState(
+    title: String,
+    subtitle: String,
+    icon: ImageVector? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Column(
         modifier = Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        if (icon != null) {
+            // A soft circular glyph gives the empty state a visual anchor (like the desktop's
+            // canvas hint), instead of a bare block of text.
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
         Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         Text(
             subtitle,
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 18.sp
         )
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(18.dp))
+            Button(onClick = onAction) { Text(actionLabel) }
+        }
     }
 }

@@ -17,4 +17,6 @@ app/google-services.json
 .reasonix/
 .claude/
 .kotlin/
+.commandcode/
+.freebuff/
 reasonix.toml

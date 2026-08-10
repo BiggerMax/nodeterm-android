@@ -1,8 +1,11 @@
 package com.nodeterm.android.core.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -250,10 +253,48 @@ data class MirrorFile(
     val v: Int = 1,
     val updatedAt: Long = 0,
     val nodes: Map<String, MirrorNode> = emptyMap(),
-    val inbox: List<InboxEvent> = emptyList(),
     val settings: JsonElement? = null,
-    val usage: JsonElement? = null
-)
+    val usage: JsonElement? = null,
+    /** This host's Server-Edition install metadata (host-local, dropped from SSH slices). */
+    val server: JsonElement? = null,
+    /**
+     * Raw inbox block (host: agent-status-mirror.ts). CURRENT hosts publish the object shape
+     * `{events: [...], nodes: {nodeId: InboxNodeNow}}`; OLD hosts published a bare event array
+     * `[...]`. Kept as a raw [JsonElement] and decoded lazily via [inboxEvents] / [nodeNow] so a
+     * SINGLE model tolerates both wire shapes — a shape mismatch must never null the whole mirror
+     * (which would silently drop every status badge).
+     */
+    val inbox: JsonElement? = null
+) {
+    /** The inbox event feed, whichever wire shape the host wrote. */
+    fun inboxEvents(): List<InboxEvent> {
+        val events = when (val el = inbox) {
+            is JsonArray -> el
+            is JsonObject -> el["events"] as? JsonArray ?: return emptyList()
+            else -> return emptyList()
+        }
+        return runCatching {
+            JsonModels.json.decodeFromJsonElement(ListSerializer(InboxEvent.serializer()), events)
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Per-node "now" map (activity / context meter). Empty when the host sent a bare array.
+     * Decoded per-entry so one malformed node (e.g. a float contextPercent) never drops every
+     * other node's meter.
+     */
+    fun nodeNow(): Map<String, InboxNodeNow> {
+        val obj = inbox as? JsonObject ?: return emptyMap()
+        val nodes = obj["nodes"] as? JsonObject ?: return emptyMap()
+        val out = LinkedHashMap<String, InboxNodeNow>()
+        for ((id, v) in nodes) {
+            runCatching {
+                JsonModels.json.decodeFromJsonElement(InboxNodeNow.serializer(), v)
+            }.getOrNull()?.let { out[id] = it }
+        }
+        return out
+    }
+}
 
 @Serializable
 data class MirrorNode(
@@ -285,6 +326,24 @@ data class InboxEvent(
     /** question only: the AskUserQuestion choices (≤4 × ≤60) for option buttons. */
     val options: List<String>? = null,
     val multiSelect: Boolean? = null
+)
+
+/**
+ * Per-node "what it's doing right now" + context-window fill — mirrors InboxNodeNow in the host's
+ * agent-status-mirror.ts (`inbox.nodes[nodeId]`). This is the phone's context meter source: the
+ * desktop shows a per-node context meter, and `contextPercent` is exactly that number (0–100).
+ */
+@Serializable
+data class InboxNodeNow(
+    /** ≤80 chars — "Editing foo.ts", "Running npm test", "Reading bar.ts". */
+    val activity: String? = null,
+    /** Raw tool name the activity came from. */
+    val tool: String? = null,
+    /** Context-window fill 0–100 (from context-tail), when known. */
+    val contextPercent: Int? = null,
+    /** First line of the user prompt that opened the CURRENT turn ("You: …"). */
+    val prompt: String? = null,
+    val updatedAt: Long = 0
 )
 
 // -----------------------------------------------------------------------------------------------

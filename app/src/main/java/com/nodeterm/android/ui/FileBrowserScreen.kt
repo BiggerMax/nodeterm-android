@@ -1,5 +1,6 @@
 package com.nodeterm.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -34,6 +37,9 @@ import com.nodeterm.android.core.model.GitFileChange
 import com.nodeterm.android.core.model.GitStatus
 import com.nodeterm.android.core.text.CodeLang
 import com.nodeterm.android.core.text.HighlightKind
+import com.nodeterm.android.core.text.Markdown
+import com.nodeterm.android.core.text.MdKind
+import com.nodeterm.android.core.text.MdLine
 import com.nodeterm.android.core.text.SyntaxHighlighter
 import com.nodeterm.android.net.HostSession
 
@@ -211,29 +217,35 @@ private fun FileViewer(viewer: FileViewerState, onBack: () -> Unit) {
             }
             viewer.text != null -> {
                 val text = viewer.text
-                val lang = SyntaxHighlighter.detectLanguage(viewer.name)
-                val truncated = text.length > MAX_TEXT_CHARS
-                val shown = if (truncated) text.take(MAX_TEXT_CHARS) else text
-                val lines = remember(text) { shown.split("\n") }
-                if (truncated) {
-                    Text(
-                        "File truncated — showing ${shown.length} of ${text.length} chars",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp)
-                ) {
-                    items(lines.size) { idx ->
-                        CodeLine(
-                            number = idx + 1,
-                            line = lines[idx].ifEmpty { " " },
-                            lang = lang
+                // .md / README files get the desktop's ⌘M markdown view; everything else keeps
+                // the line-numbered syntax-highlighted code view.
+                if (Markdown.isMarkdown(viewer.name)) {
+                    MarkdownFileView(text = text)
+                } else {
+                    val lang = SyntaxHighlighter.detectLanguage(viewer.name)
+                    val truncated = text.length > MAX_TEXT_CHARS
+                    val shown = if (truncated) text.take(MAX_TEXT_CHARS) else text
+                    val lines = remember(text) { shown.split("\n") }
+                    if (truncated) {
+                        Text(
+                            "File truncated — showing ${shown.length} of ${text.length} chars",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
+                    }
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        items(lines.size) { idx ->
+                            CodeLine(
+                                number = idx + 1,
+                                line = lines[idx].ifEmpty { " " },
+                                lang = lang
+                            )
+                        }
                     }
                 }
             }
@@ -291,6 +303,130 @@ private fun rememberAnnotated(
                 if (cursor < line.length) append(line.substring(cursor))
             }
         }
+    }
+}
+
+// ---- markdown view (the desktop's ⌘M, read-only) ---------------------------------------------
+
+@Composable
+private fun MarkdownFileView(text: String) {
+    val truncated = text.length > MAX_TEXT_CHARS
+    val shown = if (truncated) text.take(MAX_TEXT_CHARS) else text
+    // Consecutive fenced-code lines merge into ONE block so the background reads as a solid
+    // code panel instead of disconnected per-line strips.
+    val lines = remember(shown) { groupCodeBlocks(Markdown.render(shown)) }
+    Column(Modifier.fillMaxSize()) {
+        if (truncated) {
+            Text(
+                "File truncated — showing ${shown.length} of ${text.length} chars",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp)
+        ) {
+            items(lines) { line -> MdLineRow(line) }
+        }
+    }
+}
+
+/** Merge runs of consecutive [MdKind.CODE] lines into a single multi-line block. */
+private fun groupCodeBlocks(lines: List<MdLine>): List<MdLine> {
+    val out = mutableListOf<MdLine>()
+    var i = 0
+    while (i < lines.size) {
+        val line = lines[i]
+        if (line.kind == MdKind.CODE) {
+            val sb = StringBuilder(line.raw)
+            var j = i + 1
+            while (j < lines.size && lines[j].kind == MdKind.CODE) {
+                sb.append("\n").append(lines[j].raw)
+                j++
+            }
+            out += MdLine(MdKind.CODE, raw = sb.toString())
+            i = j
+        } else {
+            out += line
+            i++
+        }
+    }
+    return out
+}
+
+@Composable
+private fun MdLineRow(line: MdLine) {
+    when (line.kind) {
+        MdKind.HEADING -> {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                mdAnnotated(line),
+                fontSize = when (line.level) { 1 -> 20.sp; 2 -> 17.sp; else -> 15.sp },
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+        MdKind.PARAGRAPH -> Text(
+            mdAnnotated(line),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            modifier = Modifier.padding(vertical = 3.dp)
+        )
+        MdKind.QUOTE -> Text(
+            mdAnnotated(line),
+            fontSize = 12.sp,
+            fontStyle = FontStyle.Italic,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 12.dp, top = 3.dp, bottom = 3.dp)
+        )
+        MdKind.LIST_ITEM -> Row(Modifier.padding(vertical = 2.dp)) {
+            Text("•  ", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(mdAnnotated(line), fontSize = 13.sp, lineHeight = 19.sp)
+        }
+        MdKind.CODE -> Text(
+            line.raw,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+        )
+        MdKind.RULE -> Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outline)
+        )
+        MdKind.EMPTY -> Spacer(Modifier.height(6.dp))
+    }
+}
+
+@Composable
+private fun mdAnnotated(line: MdLine): AnnotatedString = buildAnnotatedString {
+    if (line.segments.isEmpty()) {
+        append(line.raw)
+        return@buildAnnotatedString
+    }
+    for (s in line.segments) {
+        val style = SpanStyle(
+            fontWeight = if (s.bold) FontWeight.Bold else FontWeight.Normal,
+            fontStyle = if (s.italic) FontStyle.Italic else FontStyle.Normal,
+            fontFamily = if (s.code) FontFamily.Monospace else FontFamily.Default,
+            color = when {
+                s.code -> MaterialTheme.colorScheme.tertiary
+                s.link -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurface
+            },
+            textDecoration = if (s.link) TextDecoration.Underline else TextDecoration.None
+        )
+        withStyle(style) { append(s.text) }
     }
 }
 

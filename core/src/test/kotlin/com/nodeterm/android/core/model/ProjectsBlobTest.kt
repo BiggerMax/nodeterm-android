@@ -51,13 +51,41 @@ class ProjectsBlobTest {
         assertEquals("working", node.state)
         assertEquals("claude", node.agentId)
         assertEquals("Build API", node.name)
-        assertEquals(2, mirror.inbox.size)
-        val approval = mirror.inbox[0]
+        assertEquals(2, mirror.inboxEvents().size)
+        val approval = mirror.inboxEvents()[0]
         assertEquals("approval", approval.kind)
         assertEquals("Approve bash command?", approval.title)
         assertEquals("n1-1700000000000-42", approval.pendingId)
-        val question = mirror.inbox[1]
+        val question = mirror.inboxEvents()[1]
         assertEquals(listOf("a", "b"), question.options)
+    }
+
+    @Test
+    fun parseCurrentHostInboxObjectShapeWithNodeNow() {
+        // Current hosts publish the object shape {events: [...], nodes: {nodeId: InboxNodeNow}}.
+        val json = """{"v":1,"updatedAt":1700000000000,"nodes":{"n1":{"state":"working","agentId":"claude","updatedAt":1700000000000}},"inbox":{"events":[{"id":"ev1","ts":1700000000000,"nodeId":"n1","kind":"question","title":"Pick an option","options":["a","b"]}],"nodes":{"n1":{"activity":"Running npm test","tool":"Bash","contextPercent":42,"prompt":"Fix the flaky test","updatedAt":1700000000000}}}}"""
+        val mirror = JsonModels.mirror(json)
+        assertNotNull(mirror)
+        // Event feed decodes from the object's `events` array.
+        assertEquals(1, mirror.inboxEvents().size)
+        assertEquals("question", mirror.inboxEvents()[0].kind)
+        // The per-node "now" map feeds the context meter.
+        val now = mirror.nodeNow()["n1"]
+        assertNotNull(now)
+        assertEquals("Running npm test", now.activity)
+        assertEquals("Bash", now.tool)
+        assertEquals(42, now.contextPercent)
+        assertEquals("Fix the flaky test", now.prompt)
+        // Nodes WITHOUT a `now` entry are absent from the map.
+        assertEquals(setOf("n1"), mirror.nodeNow().keys)
+    }
+
+    @Test
+    fun missingInboxDegradesToEmpty() {
+        val mirror = JsonModels.mirror("""{"v":1,"updatedAt":1,"nodes":{}}""")
+        assertNotNull(mirror)
+        assertEquals(emptyList(), mirror.inboxEvents())
+        assertEquals(emptyMap(), mirror.nodeNow())
     }
 
     @Test

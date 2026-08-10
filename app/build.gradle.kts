@@ -68,6 +68,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    // Node-kind icons (terminal / agent / note / group / editor / diff / web / video) — the
+    // desktop's visual language. Unused glyphs are stripped by R8 in release builds.
+    implementation(libs.androidx.compose.material.icons)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.camera.camera2)
