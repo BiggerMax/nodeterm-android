@@ -16,9 +16,12 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -34,6 +37,7 @@ import com.nodeterm.android.ui.Phase
 import com.nodeterm.android.ui.RelayViewModel
 import com.nodeterm.android.ui.SasScreen
 import com.nodeterm.android.ui.SettingsScreen
+import com.nodeterm.android.notify.NotificationHelper
 import com.nodeterm.android.ui.theme.NodetermTheme
 
 class MainActivity : ComponentActivity() {
@@ -41,10 +45,13 @@ class MainActivity : ComponentActivity() {
     private var viewModel: RelayViewModel? = null
     /** Deep-link code arriving before the ViewModel exists (cold start via `nodeterm://pair`). */
     private var pendingPairCode: String? = null
+    /** Notification deep link: nodeId from a tapped NEEDS-YOU push, opened once its row syncs. */
+    private val pendingNodeId = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingPairCode = intent.pairCodeParam()
+        pendingNodeId.value = intent.extraNodeId()
         enableEdgeToEdge()
         setContent {
             NodetermTheme {
@@ -64,6 +71,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+
+                // Battery: stop the 5s status polling while backgrounded; resume (with an
+                // immediate refresh) when the user returns.
+                LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.setPollingEnabled(false) }
+                LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.setPollingEnabled(true) }
 
                 // Android 13+: NEEDS YOU pushes require the runtime notification grant.
                 val notifLauncher = rememberLauncherForActivityResult(
@@ -149,6 +161,25 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         composable("home") {
+                            // Notification deep link: tapping a NEEDS-YOU push opens the node's
+                            // terminal once its row has been synced (cold start waits for the
+                            // first poll). Hidden/swiped-away nodes still open — the row is
+                            // rebuilt from the raw project data in the ViewModel.
+                            val pendingNodeIdValue = pendingNodeId.value
+                            LaunchedEffect(pendingNodeIdValue, ui.nodes, ui.projects, ui.phase) {
+                                val id = pendingNodeIdValue ?: return@LaunchedEffect
+                                val found = ui.nodes.any { it.nodeId == id } ||
+                                    ui.projects.any { p -> p.nodes.any { it.id == id } }
+                                if (found) {
+                                    pendingNodeId.value = null
+                                    viewModel.openNodeById(id)
+                                    nav.navigate("node")
+                                } else if (ui.phase == Phase.DISCONNECTED || ui.phase == Phase.NO_SESSION) {
+                                    // The session is gone and the node never synced — don't hold
+                                    // the deep link forever.
+                                    pendingNodeId.value = null
+                                }
+                            }
                             HomeScreen(
                                 state = ui,
                                 onOpenNode = { node ->
@@ -168,7 +199,14 @@ class MainActivity : ComponentActivity() {
                                 onRepair = {
                                     viewModel.disconnect()
                                     nav.navigate("pairing") { popUpTo("home") { inclusive = true } }
-                                }
+                                },
+                                onDeleteNode = { node -> viewModel.hideNode(node.nodeId) },
+                                onMoveNode = { nodeId, targetId -> viewModel.moveNode(nodeId, targetId) },
+                                onReorderCommit = { viewModel.commitNodeOrder() },
+                                onClearInbox = { viewModel.clearInbox() },
+                                onDismissInboxEvent = { eventId -> viewModel.dismissInboxEvent(eventId) },
+                                onRefresh = { viewModel.refreshNow() },
+                                onRestoreNode = { node -> viewModel.restoreNode(node.nodeId) }
                             )
                         }
                         composable("board") {
@@ -250,7 +288,8 @@ class MainActivity : ComponentActivity() {
                                 onUnpair = {
                                     viewModel.unpair()
                                     nav.navigate("pairing") { popUpTo("home") { inclusive = true } }
-                                }
+                                },
+                                onUpdateLanHost = { host -> viewModel.updateLanHost(host) }
                             )
                         }
                     }
@@ -269,10 +308,15 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         // Warm deep link: the running activity receives `nodeterm://pair?code=…` here.
         intent.pairCodeParam()?.let { code -> viewModel?.pairCode(code) }
+        // Warm notification tap: open the node once its row is synced.
+        intent.extraNodeId()?.let { pendingNodeId.value = it }
     }
 
     private fun Intent?.pairCodeParam(): String? {
         val code: String? = this?.data?.getQueryParameter("code")
         return code?.takeIf { it.isNotBlank() }
     }
+
+    /** The nodeId carried by a tapped NEEDS-YOU notification, if any. */
+    private fun Intent?.extraNodeId(): String? = this?.getStringExtra(NotificationHelper.EXTRA_NODE_ID)
 }

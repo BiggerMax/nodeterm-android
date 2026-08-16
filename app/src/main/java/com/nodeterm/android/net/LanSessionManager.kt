@@ -131,11 +131,34 @@ class LanSessionManager(
         if (syncing) return
         syncing = true
         refreshProjects()
+        startPolling()
+    }
+
+    private fun startPolling() {
+        pollJob?.cancel()
         pollJob = scope.launch {
             while (isActive) {
                 kotlinx.coroutines.delay(POLL_INTERVAL_MS)
                 if (syncing) refreshProjects()
             }
+        }
+    }
+
+    /** Pull-to-refresh: read the workspace + agent-status files right now. */
+    override fun refreshNow() {
+        refreshProjects()
+    }
+
+    /** Lifecycle-aware battery saver: pause polling while backgrounded, resume (with an
+     *  immediate refresh) when the user returns. */
+    override fun setPollingEnabled(enabled: Boolean) {
+        if (!syncing) return
+        if (enabled) {
+            refreshNow()
+            startPolling()
+        } else {
+            pollJob?.cancel()
+            pollJob = null
         }
     }
 

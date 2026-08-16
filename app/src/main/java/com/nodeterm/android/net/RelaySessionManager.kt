@@ -155,11 +155,35 @@ class RelaySessionManager(
         syncing = true
         refreshProjects()
         requestCanvas()
+        startPolling()
+    }
+
+    private fun startPolling() {
+        pollJob?.cancel()
         pollJob = scope.launch {
             while (isActive) {
                 kotlinx.coroutines.delay(POLL_INTERVAL_MS)
                 if (syncing) refreshProjects()
             }
+        }
+    }
+
+    /** Pull-to-refresh: fetch projects + the canvas mirror right now. */
+    override fun refreshNow() {
+        refreshProjects()
+        requestCanvas()
+    }
+
+    /** Lifecycle-aware battery saver: pause polling while backgrounded, resume (with an
+     *  immediate refresh) when the user returns. */
+    override fun setPollingEnabled(enabled: Boolean) {
+        if (!syncing) return
+        if (enabled) {
+            refreshNow()
+            startPolling()
+        } else {
+            pollJob?.cancel()
+            pollJob = null
         }
     }
 

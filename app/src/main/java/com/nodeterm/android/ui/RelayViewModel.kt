@@ -24,10 +24,13 @@ import com.nodeterm.android.core.remote.HostPairingPayload
 import com.nodeterm.android.core.vt.VtParser
 import com.nodeterm.android.core.vt.VtScreen
 import com.nodeterm.android.data.SessionStore
+import com.nodeterm.android.data.UiPrefsStore
 import com.nodeterm.android.net.HostSession
 import com.nodeterm.android.net.LanSessionManager
 import com.nodeterm.android.net.PairingClient
 import com.nodeterm.android.net.RelaySessionManager
+import com.nodeterm.android.notify.NotificationHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -123,6 +126,9 @@ data class RelayUiState(
     val sas: String = "",
     /** The transport this session rides on: relay `wss://…` or `ssh://user@host:port` (LAN). */
     val relayEndpoint: String = "",
+    /** The direct SSH host (LAN IP, or a Tailscale IP/name for off-LAN access); blank when no
+     *  LAN/SSH session is persisted (relay-only). Backs the Settings host editor. */
+    val lanHost: String = "",
     val connected: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
@@ -155,7 +161,21 @@ data class RelayUiState(
 class RelayViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = SessionStore(application)
+    private val uiPrefs = UiPrefsStore(application)
     private val scope = viewModelScope
+
+    // ---- local list editing (swipe-delete / drag-reorder / clear inbox) -----------------------
+    // The host owns the nodes and the inbox (no delete/dismiss RPC exists), so these are LOCAL
+    // view preferences — persisted across polls and app restarts, reset only by uninstalling.
+
+    /** nodeIds the user swiped away in the Nodes list (host still runs them). */
+    private val dismissedNodes = uiPrefs.dismissedNodes.toMutableSet()
+
+    /** Inbox event ids dismissed with "Clear all" on the Needs-you tab. */
+    private val dismissedInbox = uiPrefs.dismissedInbox.toMutableSet()
+
+    /** projectName → the user's long-press drag order of nodeIds. */
+    private val nodeOrder = uiPrefs.nodeOrder.mapValues { (_, v) -> v.toMutableList() }.toMutableMap()
 
     private val _ui = MutableStateFlow(RelayUiState())
     val ui: StateFlow<RelayUiState> = _ui.asStateFlow()
@@ -180,6 +200,11 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
      * never silently SSH-attempt a different host's persisted credentials.
      */
     private var lanFallbackArmed = false
+    /**
+     * The SSH host [updateLanHost] is switching AWAY from — the address to restore if the new
+     * one never connects (a typo / unreachable Tailscale IP must not wipe a working session).
+     */
+    private var pendingLanHostRevert: String? = null
 
     init {
         // Restore a persisted session: reconnect automatically (the SAS screen shows again if the
@@ -187,6 +212,9 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         // session actually used it (free-tier hosts never join the relay room, so the relay path
         // would stall for its handshake timeout before falling back — skip the stall entirely).
         val lan = store.loadLan()
+        // Seed the Settings "Direct connection (SSH)" editor with the persisted SSH host (blank
+        // for relay-only pairings); connectLan() re-sets it whenever a LAN session (re)connects.
+        _ui.update { it.copy(lanHost = lan?.host ?: "") }
         if (store.prefersLan() && lan != null) {
             lanSession = lan
             _ui.update {
@@ -322,6 +350,30 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         _ui.update { it.copy(phase = Phase.READY) }
     }
 
+    /**
+     * Open a node by id even when it is hidden in the Nodes list (notification deep link): the
+     * row is rebuilt from the raw project data, so swiped-away nodes still open when tapped.
+     */
+    fun openNodeById(nodeId: String) {
+        val row = _ui.value.nodes.firstOrNull { it.nodeId == nodeId }
+            ?: _ui.value.projects.asSequence()
+                .flatMap { p -> p.nodes.asSequence().map { n -> n to p } }
+                .firstOrNull { (n, _) -> n.id == nodeId }
+                ?.let { (n, p) ->
+                    NodeRow(
+                        nodeId = n.id,
+                        title = n.title,
+                        kind = n.kind,
+                        agentId = n.agentId,
+                        cwd = n.cwd,
+                        projectName = p.name,
+                        color = n.color
+                    )
+                }
+            ?: return
+        openNode(row)
+    }
+
     fun openNode(node: NodeRow) {
         // Subscription hygiene: the host keeps a detached stream alive until `pty.kill`, so release
         // any previous stream before attaching a new one (no more than one live stream at a time).
@@ -343,20 +395,24 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         manager?.attach(node.nodeId, 80, 24) { streamId, err ->
-            if (streamId != null) {
-                val parser = streamParsers.getOrPut(streamId) { VtParser(VtScreen(80, 24)) }
-                _ui.update { st ->
-                    val t = st.terminal
-                    if (t == null) st else st.copy(
-                        terminal = t.copy(streamId = streamId, screen = parser.screen, attaching = false)
-                    )
-                }
-            } else {
-                _ui.update { st ->
-                    val t = st.terminal
-                    if (t == null) st else st.copy(
-                        terminal = t.copy(attaching = false, attachError = err ?: "attach failed")
-                    )
+            // The LAN transport invokes this callback on an IO thread; the parser registry and
+            // the UI state it touches must stay on the main thread (ordered with StreamData).
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                if (streamId != null) {
+                    val parser = streamParsers.getOrPut(streamId) { VtParser(VtScreen(80, 24)) }
+                    _ui.update { st ->
+                        val t = st.terminal
+                        if (t == null) st else st.copy(
+                            terminal = t.copy(streamId = streamId, screen = parser.screen, attaching = false)
+                        )
+                    }
+                } else {
+                    _ui.update { st ->
+                        val t = st.terminal
+                        if (t == null) st else st.copy(
+                            terminal = t.copy(attaching = false, attachError = err ?: "attach failed")
+                        )
+                    }
                 }
             }
         }
@@ -555,6 +611,126 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Swipe-to-delete: hide the node on this device. There is no host RPC to remove a node, so
+     * the node keeps running on the host (and stays on the board) — it is only filtered out of
+     * this phone's Nodes list, persistently.
+     */
+    fun hideNode(nodeId: String): Boolean {
+        if (!dismissedNodes.add(nodeId)) return false
+        uiPrefs.dismissedNodes = dismissedNodes
+        _ui.update { it.copy(nodes = it.nodes.filterNot { n -> n.nodeId == nodeId }) }
+        return true
+    }
+
+    /** Undo a swipe-delete: bring the node back into the list (host still runs it). */
+    fun restoreNode(nodeId: String) {
+        if (!dismissedNodes.remove(nodeId)) return
+        uiPrefs.dismissedNodes = dismissedNodes
+        _ui.update { it.copy(nodes = buildNodes(it.projects)) }
+    }
+
+    /**
+     * Long-press drag: move [nodeId] into [targetNodeId]'s slot within the SAME project group
+     * (headers are ignored by the caller's group clamping; a target from another group is a
+     * no-op here). Called on every drag frame — order is persisted only when the drag ends.
+     */
+    fun moveNode(nodeId: String, targetNodeId: String) {
+        if (nodeId == targetNodeId) return
+        val current = _ui.value.nodes
+        val target = current.firstOrNull { it.nodeId == targetNodeId } ?: return
+        val group = current.filter { it.projectName == target.projectName }
+        val from = group.indexOfFirst { it.nodeId == nodeId }.takeIf { it >= 0 } ?: return
+        val to = group.indexOfFirst { it.nodeId == targetNodeId }.takeIf { it >= 0 } ?: return
+        if (from == to) return
+        val reordered = group.toMutableList()
+        val moved = reordered.removeAt(from)
+        // Insert at the target's original slot: after removeAt(from), the list is one shorter, so
+        // adding at `to` places the dragged node exactly where the target node was.
+        reordered.add(to, moved)
+        nodeOrder[target.projectName] = reordered.map { it.nodeId }.toMutableList()
+        _ui.update { it.copy(nodes = buildNodes(it.projects)) }
+    }
+
+    /** Persist the drag order (called once when the drag gesture ends, not per frame). */
+    fun commitNodeOrder() {
+        uiPrefs.nodeOrder = nodeOrder
+    }
+
+    /** Swipe one Needs-you card away locally (persists across polls; host keeps the event). */
+    fun dismissInboxEvent(eventId: String) {
+        if (!dismissedInbox.add(eventId)) return
+        uiPrefs.dismissedInbox = dismissedInbox
+        val filtered = _ui.value.inbox.filterNot { ev -> ev.id in dismissedInbox }
+        _ui.update { it.copy(inbox = filtered, boardPreviews = latestSnippets(filtered)) }
+    }
+
+    /** Pull-to-refresh: fetch fresh node/inbox state right now. */
+    fun refreshNow() {
+        manager?.refreshNow()
+    }
+
+    /** Lifecycle-aware battery saver: pause the 5s polling while backgrounded. */
+    fun setPollingEnabled(enabled: Boolean) {
+        manager?.setPollingEnabled(enabled)
+    }
+
+    /**
+     * Point the direct SSH transport at a new host address and reconnect with it — the way to
+     * reach the host from outside the LAN via Tailscale: set the host to its Tailscale IP
+     * (e.g. `100.64.0.1`) and the free-tier transport works anywhere, no relay needed. The SSH
+     * key and the TOFU host-key fingerprint are untouched — same machine, new address. Returns
+     * false (no reconnect) when the address is blank or no LAN/SSH session is persisted.
+     *
+     * If the new address never connects, the previously working host is restored (see the
+     * `Closed` handler) so a typo cannot destroy the persisted session.
+     */
+    fun updateLanHost(host: String): Boolean {
+        val clean = host.trim()
+        if (clean.isEmpty()) {
+            _ui.update { it.copy(error = "Host address can't be empty.") }
+            return false
+        }
+        val lan = store.loadLan() ?: run {
+            _ui.update { it.copy(error = "No direct SSH session to reconnect — pair with your host first.") }
+            return false
+        }
+        if (clean == lan.host) {
+            // Same address: just re-establish the connection (e.g. recovering from a failed
+            // switch that auto-restored this host) — nothing to persist or roll back.
+            pendingLanHostRevert = null
+        } else {
+            store.updateLanHost(clean)
+            pendingLanHostRevert = lan.host
+        }
+        // The user explicitly chose direct SSH over the relay — keep preferring it on restarts.
+        store.setPreferLan(true)
+        // A host switch changes the transport's peer — drop any live terminal first so its
+        // stream doesn't linger on the old connection.
+        closeTerminal()
+        lanSession = lan.copy(host = clean)
+        _ui.update {
+            it.copy(phase = Phase.CONNECTING, error = null, disconnectReason = null, lanHost = clean)
+        }
+        connectLan()
+        return true
+    }
+
+    /** Needs-you tab "Clear all": dismiss every actionable event + cancel posted notifications. */
+    fun clearInbox() {
+        val inbox = _ui.value.inbox
+        val ids = inbox.filter { it.kind != "done" }.map { it.id }.toSet()
+        if (ids.isEmpty()) return
+        dismissedInbox += ids
+        uiPrefs.dismissedInbox = dismissedInbox
+        // Board card previews derive from the inbox — drop the cleared events' snippets too.
+        val filtered = inbox.filterNot { ev -> ev.id in dismissedInbox }
+        _ui.update {
+            it.copy(inbox = filtered, boardPreviews = latestSnippets(filtered))
+        }
+        NotificationHelper.cancelAll(getApplication())
+    }
+
     /** Send a typed answer for a question card (send-keys fallback via the terminal). */
     fun answerQuestion(nodeId: String, text: String) {
         val node = _ui.value.nodes.firstOrNull { it.nodeId == nodeId } ?: return
@@ -634,7 +810,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         val lan = lanSession ?: return
         sawReady = false
         userInitiatedTearDown = false
-        _ui.update { it.copy(relayEndpoint = lanEndpoint(lan)) }
+        _ui.update { it.copy(relayEndpoint = lanEndpoint(lan), lanHost = lan.host) }
         manager?.close()
         lateinit var m: LanSessionManager
         m = LanSessionManager(scope, lan, store) { event -> if (manager === m) handleEvent(event) }
@@ -646,6 +822,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         when (event) {
             is HostSession.SessionEvent.Ready -> {
                 sawReady = true
+                pendingLanHostRevert = null // the new host connected — nothing to roll back
                 // LAN / SSH has no SAS (key auth — the host already trusts us), so skip the
                 // confirmation screen entirely. Relay sessions still gate on the human's OK.
                 val confirmed = store.load()?.sasConfirmed == true || lanSession != null
@@ -665,7 +842,9 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 val status = mirror?.nodes?.mapValues { (_, n) -> NodeStatus.fromMirrorState(n.state) } ?: emptyMap()
                 val names = mirror?.nodes?.mapNotNull { (id, n) -> n.name?.let { id to it } }?.toMap() ?: emptyMap()
                 // Decode once — the event feed feeds both the inbox list and the card previews.
-                val inboxEvents = mirror?.inboxEvents() ?: emptyList()
+                // Events the user dismissed with "Clear all" stay dismissed across polls.
+                val inboxEvents = (mirror?.inboxEvents() ?: emptyList())
+                    .filterNot { it.id in dismissedInbox }
                 _ui.update {
                     // Build the new projects list first so `nodes` reflects host-driven deletions
                     // (re-deriving from `it.projects` would re-freeze stale rows from the prior
@@ -712,11 +891,16 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
             }
             is HostSession.SessionEvent.StreamData -> handleStreamData(event)
             is HostSession.SessionEvent.StreamEnded -> {
-                _ui.update { st ->
-                    val t = st.terminal
-                    if (t?.streamId == event.streamId) st.copy(
-                        terminal = t.copy(ended = true, exitCode = event.exitCode, generation = t.generation + 1)
-                    ) else st
+                // Drop the stream's parser on main: any StreamData hop already queued from the
+                // same reader thread ran before this, so the remove is safe and ordered.
+                viewModelScope.launch(Dispatchers.Main.immediate) {
+                    streamParsers.remove(event.streamId)
+                    _ui.update { st ->
+                        val t = st.terminal
+                        if (t?.streamId == event.streamId) st.copy(
+                            terminal = t.copy(ended = true, exitCode = event.exitCode, generation = t.generation + 1)
+                        ) else st
+                    }
                 }
             }
             is HostSession.SessionEvent.ApprovalResult -> {
@@ -726,6 +910,17 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 _ui.update { it.copy(error = event.message) }
             }
             is HostSession.SessionEvent.Closed -> {
+                // A host-change reconnect ([updateLanHost]) that never reached READY: put the
+                // previously working SSH host back so a typo / unreachable Tailscale IP doesn't
+                // wipe the persisted session. The user is left DISCONNECTED with the restored
+                // address in Settings — re-saving reconnects.
+                val revertHost = if (!sawReady) pendingLanHostRevert else null
+                if (revertHost != null) {
+                    pendingLanHostRevert = null
+                    store.updateLanHost(revertHost)
+                    lanSession = store.loadLan()
+                    _ui.update { it.copy(lanHost = revertHost) }
+                }
                 // Free-tier hosts grant a relay token but never join the relay room (relay is a Pro
                 // entitlement), so the relay handshake times out and the transport closes BEFORE
                 // READY. When that happens and we hold persisted direct-SSH credentials, fall back
@@ -766,31 +961,40 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun handleStreamData(event: HostSession.SessionEvent.StreamData) {
-        val sid = event.streamId
-        val parser = streamParsers.getOrPut(sid) { VtParser(VtScreen(80, 24)) }
-        try {
-            when (event.kind) {
-                HostSession.StreamKind.SNAPSHOT -> {
-                    // The snapshot is a tmux capture-pane dump: bare \n joins rows, so feed \r\n so
-                    // each row starts at column 0 in the emulator (real pty output already uses \r\n).
-                    parser.screen.prepareSnapshot()
-                    parser.feed(normalizeSnapshotNewlines(event.bytes))
+        // The LAN transport streams on IO threads while the renderer reads the SAME VtScreen on
+        // the main thread — hopping to main keeps parser mutation, the streamParsers registry and
+        // the state update single-threaded. FIFO launch order preserves per-stream event order
+        // (relay events already arrive on main, so Main.immediate runs them inline). Tradeoff:
+        // LAN chunks are now captured per read and queued on main instead of blocking the SSH
+        // reader, so a stream that outpaces the main thread buffers in the queue (bounded in
+        // practice — parsing is O(chunk) and reads are ~8KB).
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            val sid = event.streamId
+            val parser = streamParsers.getOrPut(sid) { VtParser(VtScreen(80, 24)) }
+            try {
+                when (event.kind) {
+                    HostSession.StreamKind.SNAPSHOT -> {
+                        // The snapshot is a tmux capture-pane dump: bare \n joins rows, so feed \r\n so
+                        // each row starts at column 0 in the emulator (real pty output already uses \r\n).
+                        parser.screen.prepareSnapshot()
+                        parser.feed(normalizeSnapshotNewlines(event.bytes))
+                    }
+                    HostSession.StreamKind.OUTPUT -> parser.feed(event.bytes)
                 }
-                HostSession.StreamKind.OUTPUT -> parser.feed(event.bytes)
+            } catch (e: Exception) {
+                // A single malformed escape sequence (real-world tmux output is messy) must never
+                // tear down the stream — an uncaught exception here propagates into the transport's
+                // read loop and kills the terminal (seen on-device: CSI L with the cursor near the
+                // top threw ArrayIndexOutOfBounds in VtScreen.copyRow). Log and skip the chunk; the
+                // next repaint continues from a sane screen.
+                android.util.Log.w("NodetermVt", "parser feed failed stream=$sid kind=${event.kind}", e)
             }
-        } catch (e: Exception) {
-            // A single malformed escape sequence (real-world tmux output is messy) must never
-            // tear down the stream — an uncaught exception here propagates into the transport's
-            // read loop and kills the terminal (seen on-device: CSI L with the cursor near the
-            // top threw ArrayIndexOutOfBounds in VtScreen.copyRow). Log and skip the chunk; the
-            // next repaint continues from a sane screen.
-            android.util.Log.w("NodetermVt", "parser feed failed stream=$sid kind=${event.kind}", e)
-        }
-        _ui.update { st ->
-            val t = st.terminal
-            if (t?.streamId == sid) st.copy(
-                terminal = t.copy(generation = t.generation + 1, attaching = false)
-            ) else st
+            _ui.update { st ->
+                val t = st.terminal
+                if (t?.streamId == sid) st.copy(
+                    terminal = t.copy(generation = t.generation + 1, attaching = false)
+                ) else st
+            }
         }
     }
 
@@ -831,14 +1035,8 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
-        return nodes.sortedWith(compareBy({ it.statusRank(_ui.value.status) }, { it.title }))
-    }
-
-    private fun NodeRow.statusRank(status: Map<String, NodeStatus>): Int = when (status[this.nodeId]) {
-        NodeStatus.NEEDS_YOU -> 0
-        NodeStatus.WORKING -> 1
-        NodeStatus.DONE -> 2
-        else -> 3
+        // Ordering/filtering (dismissed + custom drag order) is a pure function in NodeListOrder.
+        return orderNodes(nodes, _ui.value.status, dismissedNodes, nodeOrder)
     }
 
     /** Resolve the active project's Trello-style kanban board for the mobile board view. */

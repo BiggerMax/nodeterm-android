@@ -41,6 +41,15 @@ object NotificationHelper {
                 context, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
 
+    /** Cancel every notification this app has posted (the "Needs you" shade). */
+    fun cancelAll(context: Context) {
+        try {
+            NotificationManagerCompat.from(context).cancelAll()
+        } catch (_: SecurityException) {
+            // Notification permission revoked since the check — nothing to cancel.
+        }
+    }
+
     fun show(context: Context, title: String, body: String, nodeId: String? = null, notificationId: Int) {
         if (!hasPermission(context)) return
         val intent = Intent(context, MainActivity::class.java).apply {

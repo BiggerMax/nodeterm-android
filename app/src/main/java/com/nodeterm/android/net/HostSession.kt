@@ -78,6 +78,15 @@ interface HostSession {
     /** Re-request the current canvas mirror (board view). */
     fun requestCanvas()
 
+    /** Pull fresh node/inbox state NOW (pull-to-refresh); safe to call at any time. */
+    fun refreshNow()
+
+    /**
+     * Pause/resume the background status polling. Lifecycle-aware battery saver: the app keeps
+     * polling every few seconds while backgrounded otherwise. Re-enabling refreshes immediately.
+     */
+    fun setPollingEnabled(enabled: Boolean)
+
     /** Tear the session down. Idempotent. */
     fun close()
 }

@@ -1,30 +1,39 @@
 package com.nodeterm.android.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
@@ -37,6 +46,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -47,21 +61,33 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.nodeterm.android.core.model.InboxEvent
 import com.nodeterm.android.core.model.NodeStatus
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -72,12 +98,40 @@ fun HomeScreen(
     onOpenBoard: () -> Unit,
     onBrowse: (NodeRow) -> Unit,
     onSettings: () -> Unit,
-    onRepair: (() -> Unit)? = null
+    onRepair: (() -> Unit)? = null,
+    /** Returns true when the node was actually hidden (false = already hidden, e.g. double-swipe). */
+    onDeleteNode: (NodeRow) -> Boolean,
+    onMoveNode: (nodeId: String, targetNodeId: String) -> Unit,
+    onReorderCommit: () -> Unit,
+    onClearInbox: () -> Unit,
+    onDismissInboxEvent: (eventId: String) -> Unit,
+    onRefresh: () -> Unit,
+    onRestoreNode: (NodeRow) -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
     // The mobile ⌘K — search anywhere (nodes, project files, actions) from the header.
     var paletteOpen by remember { mutableStateOf(false) }
+    // Swipe-delete undo — owned here because the activity-level snackbar has no action button.
+    val deleteSnackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
+    // Swipe-delete with one-tap Undo (the node keeps running on the host — we only hid it).
+    val deleteNode: (NodeRow) -> Unit = { node ->
+        // Only offer Undo when the node was actually hidden — a double-swipe on an already
+        // hidden node is a no-op (hideNode returns false) and would show a dead Undo.
+        if (onDeleteNode(node)) {
+            scope.launch {
+                val result = deleteSnackbar.showSnackbar(
+                    message = "Node hidden on this device — it still runs on the host.",
+                    actionLabel = "Undo",
+                    duration = SnackbarDuration.Long
+                )
+                if (result == SnackbarResult.ActionPerformed) onRestoreNode(node)
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         // Header: wordmark + live connection dot, then palette / board / settings actions.
         Row(
@@ -137,8 +191,8 @@ fun HomeScreen(
         }
 
         when (tab) {
-            0 -> NodesTab(state, onOpenNode, onBrowse, onRepair)
-            1 -> InboxTab(state, onAnswer, onAnswerQuestion)
+            0 -> NodesTab(state, onOpenNode, onBrowse, onRepair, deleteNode, onMoveNode, onReorderCommit, onRefresh)
+            1 -> InboxTab(state, onAnswer, onAnswerQuestion, onClearInbox, onDismissInboxEvent, onRefresh)
         }
 
         if (state.phase == Phase.DISCONNECTED) {
@@ -178,6 +232,9 @@ fun HomeScreen(
                 }
             }
         }
+        }
+        // Floating undo snackbar for swipe-delete.
+        SnackbarHost(deleteSnackbar, Modifier.align(Alignment.BottomCenter))
     }
 
     if (paletteOpen) {
@@ -214,31 +271,16 @@ private fun NodesTab(
     state: RelayUiState,
     onOpenNode: (NodeRow) -> Unit,
     onBrowse: (NodeRow) -> Unit,
-    onRepair: (() -> Unit)?
+    onRepair: (() -> Unit)?,
+    onDeleteNode: (NodeRow) -> Unit,
+    onMoveNode: (nodeId: String, targetNodeId: String) -> Unit,
+    onReorderCommit: () -> Unit,
+    onRefresh: () -> Unit
 ) {
-    if (state.nodes.isEmpty()) {
-        if (state.phase == Phase.DISCONNECTED) {
-            EmptyState(
-                title = "Connection dropped",
-                subtitle = state.disconnectReason
-                    ?: "Re-pair with your host to see its projects again.",
-                icon = Icons.Outlined.CloudOff,
-                actionLabel = "Re-pair",
-                onAction = onRepair
-            )
-        } else {
-            EmptyState(
-                title = "No nodes yet",
-                subtitle = "Start a terminal on your host — it will appear here. Sticky notes, agents and editors show up too.",
-                icon = Icons.Outlined.Terminal
-            )
-        }
-        return
-    }
     // Group the flat node list by project directory. nodeterm's "project" is a directory on the
     // host, and `projectName` is its display name (fall back to the node's cwd when it is blank).
-    // The flat list is already sorted (status first, then title) in the ViewModel, so `groupBy`
-    // preserves that order within each group; we only reorder groups alphabetically.
+    // The flat list is already ordered (the user's drag order, else status then title) in the
+    // ViewModel, so `groupBy` preserves that order within each group; groups are alphabetical.
     // projectName → canvas colour for the section dots. Keyed exactly like the group key below
     // (name, falling back to cwd, then id) so blank-name projects still get their colour.
     val projectColors = remember(state.projects) {
@@ -252,36 +294,274 @@ private fun NodesTab(
             .toList()
             .sortedBy { (name, _) -> name.lowercase() }
     }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+
+    // Long-press drag to reorder within a project group: one card lifts and follows the finger
+    // while the list live-reorders under it (the ViewModel's nodeOrder map is the source of
+    // truth; a per-frame move updates it in memory and a poll/restart keeps the final order).
+    val listState = rememberLazyListState()
+    var draggedNodeId by remember { mutableStateOf<String?>(null) }
+    /** Raw finger delta since the drag started (never corrected, unlike [draggedTranslation]). */
+    var dragAccum by remember { mutableIntStateOf(0) }
+    /** The lifted card's translation — recomputed EVERY frame from [dragAccum] so list reorders
+     *  and edge-scroll shifting the layout underneath never double-counts into the visuals. */
+    var draggedTranslation by remember { mutableIntStateOf(0) }
+    /** The dragged item's layout offset when its drag started (baseline for the correction). */
+    var initialDraggedOffset by remember { mutableIntStateOf(0) }
+    /** Coroutine scope for edge auto-scroll — [listState.scrollBy] is suspend and the drag
+     *  callback is not. */
+    val dragScope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+
+    // Pull-to-refresh indicator state (auto-hides shortly after the refresh is kicked off).
+    var refreshing by remember { mutableStateOf(false) }
+    val refreshScope = rememberCoroutineScope()
+
+    fun Modifier.nodeDragHandle(nodeId: String): Modifier = this
+        .zIndex(if (draggedNodeId == nodeId) 1f else 0f)
+        .graphicsLayer {
+            if (draggedNodeId == nodeId) translationY = draggedTranslation.toFloat()
+        }
+        .pointerInput(nodeId) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = {
+                    // Lifting a card deserves a tactile tick.
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    draggedNodeId = nodeId
+                    dragAccum = 0
+                    draggedTranslation = 0
+                    initialDraggedOffset = listState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.key == nodeId }?.offset ?: 0
+                },
+                onDrag = { change, dragAmount ->
+                    change.consume()
+                    dragAccum += dragAmount.y.roundToInt()
+                    val layoutInfo = listState.layoutInfo
+                    val dragged = layoutInfo.visibleItemsInfo.firstOrNull { it.key == nodeId }
+                        ?: return@detectDragGesturesAfterLongPress
+                    val corrected = dragAccum - (dragged.offset - initialDraggedOffset)
+                    draggedTranslation = corrected
+                    val centerY = dragged.offset + corrected + dragged.size / 2f
+                    // Edge auto-scroll so the card can reach the off-screen end of a long group.
+                    val threshold = 64.dp.toPx()
+                    if (centerY < layoutInfo.viewportStartOffset + threshold) {
+                        dragScope.launch { listState.scrollBy(-dragged.size * 0.5f) }
+                    } else if (centerY > layoutInfo.viewportEndOffset - threshold) {
+                        dragScope.launch { listState.scrollBy(dragged.size * 0.5f) }
+                    }
+                    // The item under the pointer becomes the drop target; project headers and
+                    // other groups are rejected by the ViewModel's group clamping, so drags can
+                    // never move a node across project sections.
+                    val over = layoutInfo.visibleItemsInfo.firstOrNull {
+                        it.key != nodeId && centerY.toInt() in it.offset..(it.offset + it.size)
+                    }
+                    if (over != null) onMoveNode(nodeId, over.key.toString())
+                },
+                onDragEnd = {
+                    draggedNodeId = null
+                    dragAccum = 0
+                    draggedTranslation = 0
+                    onReorderCommit()
+                },
+                onDragCancel = {
+                    draggedNodeId = null
+                    dragAccum = 0
+                    draggedTranslation = 0
+                    onReorderCommit()
+                }
+            )
+        }
+
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            onRefresh()
+            refreshScope.launch {
+                delay(700)
+                refreshing = false
+            }
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
-        groups.forEach { (dir, nodes) ->
-            item(key = "dir:$dir") {
-                ProjectHeader(
-                    title = dir,
-                    count = nodes.size,
-                    colorHex = projectColors[dir]
+        if (state.nodes.isEmpty()) {
+            if (state.phase == Phase.DISCONNECTED) {
+                EmptyState(
+                    title = "Connection dropped",
+                    subtitle = state.disconnectReason
+                        ?: "Re-pair with your host to see its projects again.",
+                    icon = Icons.Outlined.CloudOff,
+                    actionLabel = "Re-pair",
+                    onAction = onRepair
+                )
+            } else {
+                EmptyState(
+                    title = "No nodes yet",
+                    subtitle = "Start a terminal on your host — it will appear here. Sticky notes, agents and editors show up too.",
+                    icon = Icons.Outlined.Terminal
                 )
             }
-            items(nodes, key = { it.nodeId }) { node ->
-                val now = state.nodeNow[node.nodeId]
-                NodeCard(
-                    node = node,
-                    status = state.status[node.nodeId] ?: NodeStatus.IDLE,
-                    name = state.nodeNames[node.nodeId] ?: node.title,
-                    // What the agent is doing right now ("Running npm test") — the mirror's
-                    // per-node `now` block; desktop parity for the node-card meta line.
-                    activity = now?.activity,
-                    // Per-node context-window fill — the same meter the desktop paints on agent
-                    // cards, now on the phone's list too.
-                    contextPercent = now?.contextPercent,
-                    onOpenNode = onOpenNode,
-                    onBrowse = onBrowse
-                )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                groups.forEach { (dir, nodes) ->
+                    item(key = "dir:$dir") {
+                        ProjectHeader(
+                            title = dir,
+                            count = nodes.size,
+                            colorHex = projectColors[dir]
+                        )
+                    }
+                    items(nodes, key = { it.nodeId }) { node ->
+                        val now = state.nodeNow[node.nodeId]
+                        // Swipe left reveals quick actions (Files / Hide) — nothing is deleted by
+                        // the swipe itself, only by an explicit button tap. Long-press drag reorders.
+                        SwipeActionCard(
+                            modifier = Modifier.nodeDragHandle(node.nodeId),
+                            actionContent = { close ->
+                                if (node.cwd != null) {
+                                    SwipeActionButton(
+                                        icon = Icons.Outlined.Folder,
+                                        label = "Files",
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        onClick = {
+                                            close()
+                                            onBrowse(node)
+                                        }
+                                    )
+                                }
+                                SwipeActionButton(
+                                    icon = Icons.Outlined.Delete,
+                                    label = "Hide",
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                    onClick = {
+                                        close()
+                                        onDeleteNode(node)
+                                    }
+                                )
+                            }
+                        ) {
+                            NodeCard(
+                                node = node,
+                                status = state.status[node.nodeId] ?: NodeStatus.IDLE,
+                                name = state.nodeNames[node.nodeId] ?: node.title,
+                                // What the agent is doing right now ("Running npm test") — the mirror's
+                                // per-node `now` block; desktop parity for the node-card meta line.
+                                activity = now?.activity,
+                                // Per-node context-window fill — the same meter the desktop paints on
+                                // agent cards, now on the phone's list too.
+                                contextPercent = now?.contextPercent,
+                                onOpenNode = onOpenNode,
+                                onBrowse = onBrowse
+                            )
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/**
+ * Swipe-to-reveal-actions wrapper (never deletes directly): a horizontal swipe slides the
+ * content aside to expose a row of action buttons that must be tapped. Past a threshold the
+ * content snaps open; dragging back or tapping the (shifted) content closes it again. The
+ * action row sits behind the content, so buttons are only reachable while open.
+ */
+@Composable
+private fun SwipeActionCard(
+    /** Row of revealed action buttons; [close] hides the reveal when an action is taken. */
+    actionContent: @Composable RowScope.(close: () -> Unit) -> Unit,
+    modifier: Modifier = Modifier,
+    actionWidth: Dp = 172.dp,
+    content: @Composable () -> Unit
+) {
+    val maxRevealPx = with(LocalDensity.current) { actionWidth.toPx() }
+    val reveal = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    Box(
+        // Keyed on maxRevealPx so a density change restarts the drag closure with fresh bounds.
+        modifier = modifier.pointerInput(maxRevealPx) {
+            detectHorizontalDragGestures(
+                onHorizontalDrag = { change, dragAmount ->
+                    change.consume()
+                    scope.launch {
+                        reveal.snapTo((reveal.value + dragAmount).coerceIn(-maxRevealPx, 0f))
+                    }
+                },
+                onDragEnd = {
+                    scope.launch {
+                        reveal.animateTo(
+                            if (reveal.value < -maxRevealPx * 0.35f) -maxRevealPx else 0f
+                        )
+                    }
+                },
+                onDragCancel = {
+                    scope.launch { reveal.animateTo(0f) }
+                }
+            )
+        }
+    ) {
+        // The action buttons, revealed at the end once the content slides away.
+        Box(
+            modifier = Modifier.matchParentSize(),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(end = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // close() is handed to the buttons so an action also retracts the reveal.
+                actionContent { scope.launch { reveal.animateTo(0f) } }
+            }
+        }
+        // The content slides left to expose the actions.
+        Box(Modifier.offset { IntOffset(reveal.value.roundToInt(), 0) }) {
+            content()
+        }
+        // While open, tapping the (shifted) content just closes the reveal instead of acting.
+        if (reveal.value < -1f) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .offset { IntOffset(reveal.value.roundToInt(), 0) }
+                    .clickable { scope.launch { reveal.animateTo(0f) } }
+            )
+        }
+    }
+}
+
+/** One revealed action button: icon + label on a coloured, rounded, full-height tile. */
+@Composable
+private fun SwipeActionButton(
+    icon: ImageVector,
+    label: String,
+    containerColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(76.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(containerColor)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, contentDescription = label, tint = contentColor)
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 11.sp, color = contentColor)
     }
 }
 
@@ -326,10 +606,10 @@ private fun ProjectHeader(title: String, count: Int, colorHex: String?) {
 /**
  * One node row: kind icon + title + kind tag, project/agent meta, live activity line, cwd, a
  * node-colour accent bar on the left edge (desktop canvas parity), a context meter for agent
- * nodes, status badge and Files button. Long-press opens a quick-actions sheet (the mobile
- * mirror of the desktop's right-click node menu).
+ * nodes, status badge, Files button and a "⋯" button that opens the quick-actions sheet (the
+ * mobile mirror of the desktop's right-click node menu — long-press now drags to reorder).
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NodeCard(
     node: NodeRow,
@@ -338,19 +618,17 @@ private fun NodeCard(
     activity: String?,
     contextPercent: Int?,
     onOpenNode: (NodeRow) -> Unit,
-    onBrowse: (NodeRow) -> Unit
+    onBrowse: (NodeRow) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val clipboard = LocalClipboardManager.current
     var showActions by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = { onOpenNode(node) },
-                onLongClick = { showActions = true }
-            ),
+            .clickable { onOpenNode(node) },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
@@ -437,6 +715,15 @@ private fun NodeCard(
                         Text("Files", fontSize = 12.sp)
                     }
                 }
+                // Quick actions (Open terminal / Browse files / Copy path) — reachable from the
+                // "⋯" button now that long-press is taken by drag-to-reorder.
+                IconButton(onClick = { showActions = true }) {
+                    Icon(
+                        Icons.Outlined.MoreVert,
+                        contentDescription = "More actions",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
@@ -491,33 +778,96 @@ private fun NodeCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InboxTab(
     state: RelayUiState,
     onAnswer: (nodeId: String, pendingId: String?, decision: String) -> Unit,
-    onAnswerQuestion: (nodeId: String, text: String) -> Unit
+    onAnswerQuestion: (nodeId: String, text: String) -> Unit,
+    onClearAll: () -> Unit,
+    onDismissEvent: (eventId: String) -> Unit,
+    onRefresh: () -> Unit
 ) {
     val actionable = state.inbox.filter { it.kind != "done" }
-    if (actionable.isEmpty()) {
-        EmptyState(
-            title = "Nothing needs you",
-            subtitle = "When an agent needs approval or asks a question, it lands here.",
-            icon = Icons.Outlined.CheckCircle
-        )
-        return
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    // Pull-to-refresh indicator state (auto-hides shortly after the refresh is kicked off).
+    var refreshing by remember { mutableStateOf(false) }
+    val refreshScope = rememberCoroutineScope()
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            onRefresh()
+            refreshScope.launch {
+                delay(700)
+                refreshing = false
+            }
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
-        items(actionable, key = { it.id }) { event ->
-            InboxCard(
-                event = event,
-                nodeName = state.nodeNames[event.nodeId] ?: state.nodes.firstOrNull { it.nodeId == event.nodeId }?.title ?: event.nodeId,
-                onAnswer = onAnswer,
-                onAnswerQuestion = onAnswerQuestion
+        if (actionable.isEmpty()) {
+            EmptyState(
+                title = "Nothing needs you",
+                subtitle = "When an agent needs approval or asks a question, it lands here.",
+                icon = Icons.Outlined.CheckCircle
             )
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                // One-tap "Clear all": dismisses every pending item AND clears the notification shade.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 18.dp, end = 8.dp, top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${actionable.size} pending",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onClearAll) {
+                        Icon(
+                            Icons.Outlined.DeleteSweep,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("Clear all")
+                    }
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(actionable, key = { it.id }) { event ->
+                        // Swipe reveals a Dismiss button — an explicit tap, not the swipe itself
+                        // (the host keeps the pending event until answered or dismissed).
+                        SwipeActionCard(
+                            actionWidth = 84.dp,
+                            actionContent = { close ->
+                                SwipeActionButton(
+                                    icon = Icons.Outlined.CheckCircle,
+                                    label = "Dismiss",
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    onClick = {
+                                        close()
+                                        onDismissEvent(event.id)
+                                    }
+                                )
+                            }
+                        ) {
+                            InboxCard(
+                                event = event,
+                                nodeName = state.nodeNames[event.nodeId] ?: state.nodes.firstOrNull { it.nodeId == event.nodeId }?.title ?: event.nodeId,
+                                onAnswer = onAnswer,
+                                onAnswerQuestion = onAnswerQuestion
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

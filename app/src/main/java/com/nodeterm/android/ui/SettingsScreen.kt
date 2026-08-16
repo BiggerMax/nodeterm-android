@@ -35,6 +35,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,7 +59,9 @@ fun SettingsScreen(
     state: RelayUiState,
     onBack: () -> Unit,
     onDisconnect: () -> Unit,
-    onUnpair: () -> Unit
+    onUnpair: () -> Unit,
+    /** Point the direct SSH transport at a new host (e.g. the host's Tailscale IP) and reconnect. */
+    onUpdateLanHost: (String) -> Unit
 ) {
     val context = LocalContext.current
     var notifyEnabled by remember {
@@ -112,6 +115,38 @@ fun SettingsScreen(
         }
         if (state.projects.isNotEmpty() || state.nodes.isNotEmpty()) {
             InfoRow("Host", "${state.projects.size} project${if (state.projects.size == 1) "" else "s"} · ${state.nodes.size} node${if (state.nodes.size == 1) "" else "s"}")
+        }
+
+        // Direct SSH host override — the free-tier transport's host comes from the pairing QR
+        // (a LAN IP); pointing it at the host's Tailscale IP (100.x.y.z) makes the same SSH
+        // session reachable from anywhere, no relay / re-pairing needed.
+        if (state.lanHost.isNotBlank()) {
+            var hostDraft by remember(state.lanHost) { mutableStateOf(state.lanHost) }
+            Spacer(Modifier.height(16.dp))
+            SectionTitle("Direct connection (SSH)")
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = hostDraft,
+                onValueChange = { hostDraft = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Host address") },
+                placeholder = { Text("e.g. 100.64.0.1 or host name") },
+                supportingText = {
+                    Text(
+                        "Off-LAN access: enter the host's Tailscale IP to connect from anywhere — " +
+                            "the saved SSH key keeps working, no re-pairing."
+                    )
+                },
+                singleLine = true
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { onUpdateLanHost(hostDraft) },
+                enabled = hostDraft.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Save & reconnect")
+            }
         }
         Spacer(Modifier.height(16.dp))
         HorizontalDivider()

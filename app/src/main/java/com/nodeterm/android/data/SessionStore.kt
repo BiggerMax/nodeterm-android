@@ -108,6 +108,17 @@ class SessionStore(context: Context) {
     }
 
     /**
+     * Point the persisted LAN/SSH session at a new host (e.g. the host's Tailscale IP for
+     * off-LAN access) WITHOUT touching the SSH key or the TOFU host-key fingerprint — same
+     * machine, new address. Returns false when no LAN session is persisted (relay-only pairing).
+     */
+    fun updateLanHost(host: String): Boolean {
+        if (prefs.getString(KEY_LAN_SSH_PUB, null) == null) return false
+        prefs.edit().putString(KEY_LAN_HOST, host.trim()).apply()
+        return true
+    }
+
+    /**
      * Whether the direct LAN/SSH transport should be preferred over the relay on restore. Set
      * once a LAN session actually works (free-tier hosts grant a relay token but never join the
      * relay room, so the relay path times out — LAN restore skips that stall entirely).
