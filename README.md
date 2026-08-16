@@ -1,194 +1,196 @@
-# nodeterm Android companion (P1 + P2 + P3)
+# nodeterm Android 伴侣客户端
 
-Native Android (Kotlin + Jetpack Compose) companion client for
-[nodeterm](https://github.com/eneskirca/nodeterm) — the node-based terminal manager. Implements
-P1 + P2 + P3 of `docs/ANDROID_CLIENT_SPEC.md`: **QR pairing → persistent E2EE relay session →
-project/node list → agent status stream (RUNNING / NEEDS YOU) → FULL terminal rendering (VT
-state machine, colours, scrollback via tmux) → answer NEEDS YOU → mobile board view → read-only
-remote/SSH file browsing + git status/diff → markdown preview → dictation → command palette →
-host-push entry point**. On top of the relay (Pro/entitled hosts), the client also speaks the
-**LAN / SSH direct transport** — the same free-tier path the iOS client uses, with no relay and
-no Pro required.
+[nodeterm](https://github.com/eneskirca/nodeterm)（基于节点的终端管理器）的原生 Android
+（Kotlin + Jetpack Compose）伴侣客户端。通过二维码将手机与 nodeterm 主机配对，即可获得：
+持久化的 E2EE 中继会话、带实时 agent 状态流（RUNNING / NEEDS YOU）的项目/节点列表、
+**完整终端渲染**（VT 状态机、颜色、基于 tmux 的回滚）、对 NEEDS-YOU 请求的一键应答、
+移动端看板视图、带 git status/diff 的只读远程文件浏览、Markdown 预览、语音输入、
+命令面板、节点滑动删除 / 拖拽排序，以及离线 Tailscale SSH 覆盖。在中继（Pro/有权限的主机）
+之外，客户端同样支持 **LAN / SSH 直连传输** —— 与 iOS 客户端使用的免费层级路径相同，
+无需中继、无需 Pro。
 
-The wire protocol is implemented byte-for-byte against the nodeterm reference source
-(`src/main/remote/*`); the E2EE / framing / relay state machine unit tests pass against vectors
-generated from the TypeScript implementation itself, and the VT renderer is verified with its
-own ANSI-behaviour test suite.
+线协议按 nodeterm 参考源码（`src/main/remote/*`）逐字节实现；E2EE / 帧协议 / 中继状态机
+单元测试通过与 TypeScript 实现本身生成的向量比对验证，VT 渲染器则由其自带的 ANSI 行为
+测试套件验证。
 
-## Modules
+## 模块
 
-| Module | Kind | Contents |
+| 模块 | 类型 | 内容 |
 |--------|------|----------|
-| `:core` | pure Kotlin/JVM, **Android-free** | NaCl box E2EE + HKDF-SHA256, 16-byte terminal framing, RPC envelope + relay state machine (injectable transport), pairing offer / workspace / canvas / agent-status mirror / inbox models (incl. per-node "now" activity + context meter), **VT100/xterm terminal emulator** (screen + parser + scrollback + alternate buffer), **git status models + per-line syntax highlighter**, **lightweight markdown renderer**, **LAN command builders + parsers** (tmux/ssh-fs wire shapes, v3→v2 workspace assembly) |
-| `:app` | Android application | OkHttp WebSocket transport, **sshj LAN/SSH transport** (ed25519 auth, TOFU host-key pinning, tmux PTY terminal attach), Keystore-backed session persistence (relay + LAN credentials), Compose UI (pairing/SAS/home/nodes/**full terminal renderer + dictation**/inbox/**board**/**file browser + syntax-highlighted viewer + markdown view + git status/diff**/**⌘K command palette**/settings), FCM messaging service + local notifications |
+| `:core` | 纯 Kotlin/JVM，**不依赖 Android** | NaCl box E2EE + HKDF-SHA256、16 字节终端帧协议、RPC 信封 + 中继状态机（可注入传输层）、配对 offer / workspace / canvas / agent-status 镜像 / inbox 模型（含每个节点的 "now" 活动 + 上下文计量条）、**VT100/xterm 终端模拟器**（屏幕 + 解析器 + 回滚 + 备用屏幕）、**git status 模型 + 逐行语法高亮器**、**轻量级 Markdown 渲染器**、**LAN 命令构建器 + 解析器**（tmux/ssh-fs 线格式、v3→v2 workspace 组装） |
+| `:app` | Android 应用 | OkHttp WebSocket 传输、**sshj LAN/SSH 传输**（ed25519 认证、TOFU 主机密钥固定、tmux PTY 终端连接）、基于 Keystore 的会话持久化（中继 + LAN 凭据）、Compose UI（配对/SAS/首页/节点/**完整终端渲染器 + 语音输入**/收件箱/**看板**/**文件浏览器 + 语法高亮查看器 + Markdown 视图 + git status/diff**/**⌘K 命令面板**/设置）、FCM 消息服务 + 本地通知、**UI 偏好存储**（滑动隐藏的节点、已忽略的 needs-you 事件、自定义的每项目节点顺序）、生命周期感知的状态轮询（省电） |
 
-## Build
+## 构建
 
-Prerequisites:
+前置要求：
 
-- **JDK 17+** (verified with OpenJDK 21).
-- **Android SDK** with `platforms;android-35` and `build-tools` (AGP 8.10). Set `ANDROID_HOME`
-  or create `local.properties` with `sdk.dir=…`.
+- **JDK 17+**（已在 OpenJDK 21 上验证）。
+- **Android SDK**，含 `platforms;android-35` 和 `build-tools`（AGP 8.10）。设置 `ANDROID_HOME`
+  或在 `local.properties` 中创建 `sdk.dir=…`。
 
-Commands:
+命令：
 
 ```bash
-# Pure protocol layer unit tests — needs ONLY a JDK:
+# 纯协议层单元测试——只需 JDK：
 ./gradlew :core:test
 
-# Full app:
+# 纯 JVM 应用测试（节点列表排序 / 滑动删除逻辑，以及可选的 LanE2eTest）：
+./gradlew :app:testDebugUnitTest
+
+# 完整应用：
 ./gradlew :app:assembleDebug
 ```
 
-> **Verification status (honest):** `:core:test` is **green** on this machine (**133 tests**: e2ee
-> vs reference vectors, RFC 5869 HKDF, framing roundtrip + known byte samples, full relay
-> handshake to ready over an in-process fake transport, RPC req/res/timeout/keepalive,
-> replay/reflection defenses, tunnel, pairing-offer validation, projects-blob parsing, the P2
-> VT suite: SGR 16/256/truecolor, cursor/erase/wrap/scroll, scroll regions, alternate screen,
-> transcript, REP/RIS/resize, fragmented and split-UTF-8 input, and the LAN command builders +
-> parsers: tmux naming/quoting, metadata + project-file framing, v3→v2 workspace assembly,
-> ls/git status parsing, SGR scroll sequence). `./gradlew :app:assembleDebug` also **passes on
-> this machine** (Android SDK installed via Homebrew `android-commandlinetools`; JDK 21 +
-> `platforms;android-35` + `build-tools;35.0.0`), producing
-> `app/build/outputs/apk/debug/app-debug.apk` (~18 MB, includes sshj + BouncyCastle).
+## FCM（主机推送入口）
 
-## FCM (host push entry, optional for P1)
+应用在**没有** Firebase 项目的情况下也能正常构建和运行。`NodetermMessagingService`
+（`notify/NodetermMessagingService.kt`）是主机推送的入口点：它为主机推送的 RUNNING /
+NEEDS YOU / done 事件渲染本地通知。
 
-The app builds and works **without** a Firebase project. `NodetermMessagingService`
-(`notify/NodetermMessagingService.kt`) is the host-push entry point: it renders local
-notifications for host-pushed RUNNING / NEEDS YOU / done events.
+如需启用真实推送：
 
-To enable real delivery:
-
-1. Create a Firebase project and add an Android app (`com.nodeterm.android`).
-2. Download `google-services.json` into `app/`.
-3. Add to the root `build.gradle.kts`:
+1. 创建一个 Firebase 项目并添加 Android 应用（`com.nodeterm.android`）。
+2. 将 `google-services.json` 下载到 `app/` 目录。
+3. 在根目录的 `build.gradle.kts` 中添加：
    ```kotlin
    plugins { id("com.google.gms.google-services") version "4.4.2" apply false }
    ```
-   and to `app/build.gradle.kts`:
+   并在 `app/build.gradle.kts` 中添加：
    ```kotlin
    plugins { id("com.google.gms.google-services") }
    ```
-4. Rebuild. `NodetermMessagingService.onNewToken` persists the registration token for the host's
-   push-grant model.
+4. 重新构建。`NodetermMessagingService.onNewToken` 会持久化注册令牌，用于主机的推送授权模型。
 
-## Pairing flow (P1)
+## 配对流程
 
-1. Host: Settings → Phone → show pairing code (a `nodeterm://pair?code=…` QR).
-2. Android: scan it (or paste the code). The offer is validated (wss-only, loopback-ws allowed,
-   token + host pubkey required) — mirroring the reference `pairing.ts`.
-3. The client mints its own NaCl box keypair (secret key encrypted at rest via the Android
-   Keystore), connects `wss://<relay>/?token=…`, and runs the E2EE handshake:
-   `e2ee_hello → e2ee_ready → e2ee_auth → e2ee_authenticated` (plaintext text frames for the
-   control messages, E2EE binary boxes after that — role-tagged, sequence-guarded).
-4. Both humans compare the 6-digit SAS; the host approves pin-once; the client syncs
-   `projects.list` (workspace + tmux sessions + agent-status mirror) and the canvas mirror.
-5. Terminal nodes stream output as RAW PTY bytes (Snapshot*/Output/Error frames); the :core VT
-   emulator renders them (SGR colours, bold/italic/underline, cursor, alternate screen) and typed
-   input goes back as OP.Input frames. NEEDS YOU approvals answer via the host's
-   `agent:answer-permission` RPC (hook-reply ticket) with a send-keys fallback — the reference's
-   documented v1 behavior.
+1. 主机端：设置 → Phone → 显示配对码（`nodeterm://pair?code=…` 二维码）。
+2. Android 端：扫码（或粘贴配对码）。offer 会被校验（仅允许 wss、允许 loopback-ws、
+   必须包含 token + 主机公钥）——与参考 `pairing.ts` 保持一致。
+3. 客户端会生成自己的 NaCl box 密钥对（私钥通过 Android Keystore 加密存储），连接
+   `wss://<relay>/?token=…`，并执行 E2EE 握手：
+   `e2ee_hello → e2ee_ready → e2ee_auth → e2ee_authenticated`（控制消息用明文文本帧，
+   之后为 E2EE 二进制 box——带角色标签、序号防护）。
+4. 双方人工比对 6 位 SAS 码；主机一次性批准 pin；客户端同步 `projects.list`
+   （workspace + tmux 会话 + agent-status 镜像）和 canvas 镜像。
+5. 终端节点以 RAW PTY 字节流形式输出（Snapshot*/Output/Error 帧）；`:core` 的 VT 模拟器
+   渲染它们（SGR 颜色、粗体/斜体/下划线、光标、备用屏幕），键入的输入以 OP.Input 帧发回。
+   NEEDS YOU 审批通过主机的 `agent:answer-permission` RPC（hook-reply 票据）应答，
+   并提供 send-keys 兜底——即参考实现文档描述的 v1 行为。
 
-## LAN / SSH direct transport (free tier)
+## LAN / SSH 直连传输（免费层级）
 
-When a v0.2.37 host QR payload carries **no relay block** (free tier — “Remote access from your
-phone” off, no Pro), the app falls back to the direct LAN / SSH channel instead of erroring —
-the exact path the iOS client browses through. **Even when the host does mint a relay token**
-(v0.2.37 pair servers always do), a free-tier host never actually joins the relay room, so the
-relay handshake times out and the app then **falls back to the same LAN / SSH channel**
-automatically (a one-time notice, then READY — no dead “Disconnected” screen). Once a LAN
-session works, the preference is persisted, so later restores skip the doomed relay attempt
-entirely and go straight to LAN.
+当 v0.2.37 主机的 QR 载荷**不含中继块**时（免费层级——“从手机远程访问”关闭，无 Pro），
+应用会回退到 LAN / SSH 直连通道而不是报错——这正是 iOS 客户端浏览所用的路径。
+**即使主机确实生成了中继 token**（v0.2.37 的配对服务器总是会生成），免费层级的主机也
+永远不会真正加入中继房间，因此中继握手会超时，应用随后**自动回退到同一 LAN / SSH 通道**
+（一次性提示，然后 READY——不会出现死掉的 "Disconnected" 界面）。一旦 LAN 会话可用，
+偏好会被持久化，之后的恢复会完全跳过注定失败的中继尝试，直接走 LAN。
 
-1. Pairing (`POST http://<host>:<pairPort>/pair`) is ungated on the host and always installs our
-   ed25519 key into `~/.ssh/authorized_keys`; the client **persists that keypair** (encrypted at
-   rest) as its LAN credential (even when the relay path is also offered, so a relay handshake
-   failure can fall back to it).
-2. It SSH-connects straight to `host:22` as `user` (sshj + EdDSA), pinning the host key
-   (TOFU: first-connect accepted, later changes rejected).
-3. Projects/status come from the same bytes the relay serves: probe the host userData dir, cat
-   `workspace.json` + `agent-status.json`, list the live `nt-<nodeId>` tmux sessions, assemble
-   the v3 index + project files into the v2 workspace the UI renders.
-4. A node's terminal is a tmux **client** (`tmux -L node-terminal new-session -A -s nt-<id>`)
-   under a PTY with capture-pane snapshots; input/resize/SGR-wheel scroll go straight into it.
-   File browsing, git status/diff and NEEDS-YOU answers (send-keys) are read-only one-shot execs.
+1. 配对（`POST http://<host>:<pairPort>/pair`）在主机端无需门禁，且总会将我们的 ed25519
+   密钥安装到 `~/.ssh/authorized_keys`；客户端**持久化该密钥对**（加密存储）作为其 LAN
+   凭据（即使同时提供了中继路径，这样中继握手失败时可以回退到它）。
+2. 直接以 `user` 身份 SSH 连接到 `host:22`（sshj + EdDSA），并固定主机密钥
+   （TOFU：首次连接接受，之后变更拒绝）。
+3. 项目/状态来自中继所服务的相同字节：探测主机 userData 目录、读取
+   `workspace.json` + `agent-status.json`、列出存活的 `nt-<nodeId>` tmux 会话，
+   将 v3 索引 + 项目文件组装成 UI 渲染所需的 v2 workspace。
+4. 节点的终端是一个 tmux **客户端**（`tmux -L node-terminal new-session -A -s nt-<id>`），
+   运行在 PTY 之下并使用 capture-pane 快照；输入/缩放/SGR 滚轮滚动直接写入其中。
+   文件浏览、git status/diff 和 NEEDS-YOU 应答（send-keys）都是只读的一次性 exec。
 
-**Real end-to-end check** (against this machine's own sshd + tmux + live desktop userData) —
-opt-in integration test that installs a throwaway ed25519 key, runs the exact LAN command chain
-(probe → metadata → workspace assembly → tmux PTY attach + typed input round-trip → capture →
-scroll → fs/git), then restores everything:
+**真实端到端检查**（针对本机自带的 sshd + tmux + 真实桌面 userData）——可选的集成测试，
+它会安装一次性 ed25519 密钥，运行完整的 LAN 命令链（探测 → 元数据 → workspace 组装 →
+tmux PTY 连接 + 键入往返 → 捕获 → 滚动 → fs/git），然后恢复一切：
 
 ```bash
 NODETERM_E2E=1 ./gradlew :app:testDebugUnitTest --tests '*LanE2eTest'
 ```
 
-**macOS caveat (TCC):** the `sshd` launchd daemon usually lacks Full Disk Access, so project files
-under `~/Documents` etc. come back `Operation not permitted` over SSH — the LAN transport then
-shows an empty project list with a one-time notice (the relay path is unaffected because the
-host-side app, which has access, reads the files). Grant `sshd-keygen-wrapper` Full Disk Access in
-System Settings → Privacy & Security, or keep projects outside TCC-protected folders. Non-
-interactive SSH execs also lack the Homebrew PATH, so commands are prefixed with a PATH
-augmentation (`/opt/homebrew/bin` etc.).
+**macOS 注意事项（TCC）：** `sshd` launchd 守护进程通常缺少完全磁盘访问权限，因此
+`~/Documents` 等目录下的项目文件通过 SSH 会返回 `Operation not permitted`——此时 LAN 传输
+会显示空项目列表并给出一次性提示（中继路径不受影响，因为有权访问文件的主机端应用会读取
+它们）。在 系统设置 → 隐私与安全 中授予 `sshd-keygen-wrapper` 完全磁盘访问权限，
+或将项目放在 TCC 保护的文件夹之外。非交互式 SSH exec 也缺少 Homebrew PATH，
+因此命令会加上 PATH 增强前缀（`/opt/homebrew/bin` 等）。
 
-**Android caveat (BouncyCastle):** Android ships an ANCIENT BouncyCastle fork under the provider
-name `"BC"`, and sshj reuses whatever `"BC"` provider already exists instead of registering the
-bundled bcprov — so curve25519 KEX died with `no such algorithm: X25519 for provider BC` on real
-devices (JVM unit tests never hit it). `LanSessionManager` now replaces the platform provider with
-the bundled bcprov 1.78+ before any sshj crypto and offers an adaptive KEX list (curve25519 when
-X25519 is available, else ECDH-NIST P-256/384/521 — both supported by macOS sshd).
+**Android 注意事项（BouncyCastle）：** Android 自带的是一份**极其古老**的 BouncyCastle 分支，
+提供商名为 `"BC"`，而 sshj 会复用已有的 `"BC"` 提供商而不是注册自带的 bcprov——
+因此在真机上 curve25519 KEX 会以 `no such algorithm: X25519 for provider BC` 失败
+（JVM 单元测试永远不会触发）。`LanSessionManager` 现在会在任何 sshj 加密之前用自带的
+bcprov 1.78+ 替换平台提供商，并提供自适应 KEX 列表（X25519 可用时用 curve25519，
+否则用 ECDH-NIST P-256/384/521——macOS sshd 两者都支持）。
 
-## P2 features
+**通过 Tailscale 离线访问（SSH 主机覆盖）：** 直连传输的主机地址来自配对二维码（通常是
+局域网 IP），所以手机一离开 Wi-Fi 就会失效。设置 → **Direct connection (SSH)** 允许你将
+持久化的会话指向不同地址——例如主机的 **Tailscale IP**（`100.x.y.z`）——并使用**相同的
+已保存 ed25519 密钥和 TOFU 指纹**重新连接（无需重新配对，同一台机器只是换了个地址）。
+如果新地址始终无法到达 READY（地址输错，或 Tailscale 未启动），会自动恢复之前可用的主机，
+应用会保留最后一次良好的会话而不是清空它。
 
-- **Full terminal rendering** — `core/…/vt/` implements the xterm state machine (UTF-8,
-  CSI/OSC/DCS, SGR 16/256/truecolor, cursor addressing, erase, scroll regions, alternate
-  screen, transcript). The app's `TerminalRenderer` draws the cell grid on a Compose Canvas with
-  per-run colours and a block cursor; the view auto-sizes the remote pty (`OP.Resize`).
-- **Scrollback via tmux** — the host's tmux sessions own history: the phone sends `pty.scroll`
-  (`{streamId, dir, lines}`) and the repainted screen streams back as Output frames (SGR wheel
-  events → tmux scroll mode). The emulator's local transcript is stored/tested but is not the
-  scrollback source of truth for tmux nodes.
-- **Snapshots** — `tmux capture-pane -e` dumps arrive as Snapshot* frames; the client resets the
-  screen and replays them (`\n` → `\r\n` so capture rows start at column 0; live pty output
-  already arrives as `\r\n` via ONLCR).
-- **Mobile board** — `canvas:request`/`canvas:state` nodes render on a pannable/zoomable surface
-  with their canvas colours, titles and live status badges; tap a node to open its terminal.
-- **Read-only remote file browsing** — `fs.list` / `fs.read` / `fs.readBinary` (jailed to the
-  host's shared project roots) drive a directory walker and a read-only text viewer (hex preview
-  for binaries). SSH/remote projects resolve through the host's own layers.
+## 功能
 
-## P3 features
+### 终端与远程会话
 
-- **Read-only file/editor** — the file viewer now shows **line numbers + syntax highlighting**
-  (per-line tokenizer in `:core` for Kotlin/Java/TS/Python/Go/Rust/Shell/Swift/C/JSON/YAML/SQL/
-  Markdown, language auto-detected from the extension) with a large-file render cap.
-- **Read-only git** — from the file browser: `git.status` (branch, ahead/behind, staged +
-  changed lists with status letters) and `git.diff` (unified diff with +/-/meta coloring),
-  all read-only.
-- **Dictation** — a mic button in the terminal input bar uses Android `SpeechRecognizer`
-  (RECORD_AUDIO runtime grant; graceful when no speech service is installed, e.g. emulators):
-  live partial results land in the field, then Send.
-- **Subscription polish** — closing a terminal (or switching nodes) sends `pty.kill {streamId}`
-  so the host drops the detached pty and stops streaming; no more leaked streams.
-- **Markdown preview** — `.md` / `README` files in the file browser render through a tiny
-  dependency-free renderer (`:core/text/Markdown.kt`, the mobile ⌘M mirror) instead of the raw
-  code view: headings, lists, quotes, fenced code, inline bold/italic/links — pure data in,
-  Compose styles out.
-- **Command palette (⌘K)** — a swipe/keyboard-openable overlay that jumps anywhere: open any
-  terminal/agent node, browse a project's files, or run app actions (board / settings / re-pair).
-  Type to filter, Enter or tap to activate, Esc to close — desktop muscle memory on touch.
-- **Node-kind visual language** — every node kind (terminal, agent, note, group, editor, diff,
-  web, video) carries the desktop's icon + accent colour everywhere (home list, board, kanban),
-  driven by one source of truth (`ui/NodeKind.kt`); board cards now render per-kind: sticky notes,
-  group containers, editor/diff/web cards with kind glyphs.
-- **Per-node "now" meter** — the host mirror's per-node activity line ("Running npm test") and
-  context-window fill show on node cards and the board; inbox shape parsing tolerates both the
-  current host object shape and the legacy bare-array shape so a mismatch never drops every badge.
+- **完整终端渲染** — `core/…/vt/` 实现了 xterm 状态机（UTF-8、CSI/OSC/DCS、SGR
+  16/256/真彩色、光标寻址、擦除、滚动区域、备用屏幕、转录）。应用的 `TerminalRenderer`
+  在 Compose Canvas 上绘制单元格网格，支持逐次运行的配色和块状光标；视图会自动调整远程
+  pty 的尺寸（`OP.Resize`）。
+- **基于 tmux 的回滚** — 主机 tmux 会话拥有历史记录：手机发送 `pty.scroll`
+  （`{streamId, dir, lines}`），重绘的屏幕以 Output 帧流式传回（SGR 滚轮事件 → tmux
+  滚动模式）。模拟器的本地转录有存储/测试，但不是 tmux 节点的回滚事实来源。
+- **快照** — `tmux capture-pane -e` 的转储以 Snapshot* 帧到达；客户端重置屏幕并重放它们
+  （`\n` → `\r\n`，让捕获行从第 0 列开始；实时 pty 输出已通过 ONLCR 以 `\r\n` 到达）。
+- **语音输入** — 终端输入栏的麦克风按钮使用 Android `SpeechRecognizer`
+  （RECORD_AUDIO 运行时授权；未安装语音服务时优雅降级，例如模拟器）：实时部分结果先落入
+  输入框，然后发送。
+- **订阅清理** — 关闭终端（或切换节点）会发送 `pty.kill {streamId}`，让主机丢弃分离的
+  pty 并停止流式传输；不再泄漏流。
 
-## Boundaries (explicitly not done)
+### 看板、文件与 git
 
-- No auto-reconnect with fresh tokens (the pairing token is single-use; a dropped session asks
-  you to re-pair — the spec leaves reconnects to the token-minting takeover party).
-- Board is read-only (canvas edits / `canvas:mutate`), file **editing** (`fs.write`) and git
-  **mutations** (`git.stage` / commit / push) are deliberately not exposed to the phone: P3 is
-  read-only by design.
+- **移动看板** — `canvas:request`/`canvas:state` 节点渲染在可平移/缩放的表面上，带有 canvas
+  颜色、标题和实时状态徽标；点击节点即可打开其终端。
+- **节点类型视觉语言** — 每种节点类型（terminal、agent、note、group、editor、diff、web、
+  video）在首页列表、看板、看板列中处处携带桌面的图标 + 强调色，由单一事实来源
+  （`ui/NodeKind.kt`）驱动；看板卡片按类型渲染：便签、组容器、带类型字形的 editor/diff/web
+  卡片。
+- **只读远程文件浏览** — `fs.list` / `fs.read` / `fs.readBinary`（限制在主机的共享项目根目录
+  内）驱动目录遍历器和只读文本查看器（二进制显示十六进制预览）。SSH/远程项目通过主机的
+  自有层解析。
+- **语法高亮编辑器视图** — 文件查看器显示**行号 + 语法高亮**（`:core` 中的逐行分词器，
+  支持 Kotlin/Java/TS/Python/Go/Rust/Shell/Swift/C/JSON/YAML/SQL/Markdown，语言根据扩展名
+  自动检测），并有超大文件渲染上限。
+- **只读 git** — 从文件浏览器进入：`git.status`（分支、领先/落后、staged + 带状态字母的
+  changed 列表）和 `git.diff`（带 +/-/元信息配色的统一 diff），全部只读。
+- **Markdown 预览** — 文件浏览器中的 `.md` / `README` 文件通过一个零依赖的轻量渲染器
+  （`:core/text/Markdown.kt`，移动端 ⌘M 镜像）渲染，而不是原始代码视图：标题、列表、引用、
+  围栏代码、行内粗体/斜体/链接——纯数据进，Compose 样式出。
+
+### 首页与收件箱
+
+- **命令面板（⌘K）** — 可通过滑动/键盘打开的浮层，可跳转到任何地方：打开任意终端/agent
+  节点、浏览项目的文件，或执行应用操作（看板 / 设置 / 重新配对）。输入过滤，Enter 或点击
+  激活，Esc 关闭——在触屏上保留桌面端肌肉记忆。
+- **每节点 "now" 计量** — 主机镜像的每节点活动行（"Running npm test"）和上下文窗口填充
+  显示在节点卡片和看板上；收件箱形状解析同时容忍当前主机对象形状和旧版裸数组形状，
+  因此形状不匹配永远不会丢掉任何徽标。
+- **滑动删除节点（带撤销）** — 在节点列表中横向滑动节点以**本地**隐藏它（它在主机上继续
+  运行，也保留在看板上），并带一键**撤销**提示条。隐藏的节点在重新配对和应用重启后仍然
+  保留（`UiPrefsStore`，一个与会话存储分开的偏好文件，因此取消配对不会重置它们）。
+- **长按拖拽排序** — 在项目分组内拖拽节点以设置自定义顺序；主机的状态排序（needs-you →
+  working → done → idle，然后是标题）仍是未手动排序节点以及无自定义顺序项目的兜底方案。
+  纯列表逻辑位于 `ui/NodeListOrder.kt`，并有单元测试（`NodeListOrderTest`）。
+- **忽略 Needs-you 卡片** — 滑动单个卡片，或在 Needs-you 标签页上点 **Clear all**（同时
+  取消这些事件已发布的通知）；忽略状态在多次轮询之间持久保留。
+- **下拉刷新 + 生命周期感知轮询** — 在首页列表上下拉可立即轮询主机；应用进入后台时后台
+  轮询暂停（省电），回到前台时立即刷新恢复。
+- **通知深链** — 点击 NEEDS-YOU 推送会直接打开该节点的终端（一旦其行已同步；冷启动也能
+  工作，并且仍能打开已滑动隐藏的节点）。
+
+## 安全模型
+
+- 所有中继流量均为 E2EE（NaCl box，按角色/序号防护），并有一次性的 SAS 校验；
+  LAN 传输使用 ed25519 认证 + TOFU 主机密钥固定。
+- 会话凭据（中继 + LAN 密钥对）通过 Android Keystore 加密存储。
+- 文件浏览器、git 和 NEEDS-YOU 应答按设计只读；不向手机暴露任何编辑或变更端点
+  （`fs.write`、`git.stage`/commit/push、canvas 编辑）。
