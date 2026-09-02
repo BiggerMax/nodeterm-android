@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">nodeterm</string>
+    <string name="notification_channel_name">主机事件</string>
+    <string name="notification_channel_desc">来自主机 needs-you、运行中和完成事件的推送</string>
+    <string name="action_back">‹ 返回</string>
+    <string name="settings_title">设置</string>
+    <string name="settings_session">会话</string>
+    <string name="label_connection">连接</string>
+    <string name="state_connected">已连接</string>
+    <string name="state_disconnected">已断开</string>
+    <string name="label_endpoint">端点</string>
+    <string name="label_host">主机</string>
+    <plurals name="host_projects_nodes"><item quantity="one">%1$d 个项目 · %2$d 个节点</item><item quantity="other">%1$d 个项目 · %2$d 个节点</item></plurals>
+    <string name="direct_connection">直连 (SSH)</string>
+    <string name="host_address">主机地址</string>
+    <string name="host_address_hint">例如 100.64.0.1 或主机名</string>
+    <string name="off_lan_access">局域网外访问：填入主机的 Tailscale IP 即可随处连接——已保存的 SSH 密钥仍然有效，无需重新配对。</string>
+    <string name="save_reconnect">保存并重连</string>
+    <string name="shortcuts_gestures">快捷键与手势</string>
+    <string name="notifications">通知</string>
+    <string name="host_event_notifications">主机事件通知</string>
+    <string name="notification_explanation">来自主机 needs-you / 完成事件的推送（需接入 Firebase 项目——见 README）。</string>
+    <string name="connection_section">连接</string>
+    <string name="disconnect_keep_pairing">断开连接（保留配对）</string>
+    <string name="unpair_reset">取消配对并重置</string>
+    <string name="about">关于</string>
+    <string name="about_companion">nodeterm Android 伴侣</string>
+    <string name="version">版本 %1$s</string>
+    <string name="about_description">E2EE 中继客户端——协议文档见 ANDROID_CLIENT_SPEC.md。</string>
+    <string name="language">语言</string>
+    <string name="language_system">跟随系统</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">中文</string>
+    <string name="notification_completed">已完成</string>
+    <string name="notification_needs_you">需要你</string>
+    <string name="notification_attention">主机上的一个 agent 需要关注。</string>
+    <string name="dictate">语音输入</string><string name="microphone_permission_needed">需要麦克风权限</string><string name="microphone_permission_explanation">允许使用麦克风向终端输入语音（类似桌面端的 ⌘⇧D）。</string><string name="cancel">取消</string><string name="allow">允许</string><string name="speech_unavailable">此设备无法使用语音识别。</string><string name="no_speech_try_again">未听到语音，请重试。</string><string name="listening_timeout">聆听超时，请重试。</string><string name="recognition_error">识别错误（%1$d）。</string><string name="no_speech_heard">未听到语音。</string><string name="listening_speak_now">正在聆听，请说话</string><string name="review_then_send">确认文本后发送</string><string name="stop">停止</string><string name="restart">重启</string><string name="spoken_text_placeholder">语音文本显示于此…</string><string name="send">发送</string>
+</resources>

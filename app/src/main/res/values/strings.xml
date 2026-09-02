@@ -3,4 +3,37 @@
     <string name="app_name">nodeterm</string>
     <string name="notification_channel_name">Host events</string>
     <string name="notification_channel_desc">Needs-you, running and done events pushed from your host</string>
+    <string name="action_back">‹ Back</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_session">Session</string>
+    <string name="label_connection">Connection</string>
+    <string name="state_connected">connected</string>
+    <string name="state_disconnected">disconnected</string>
+    <string name="label_endpoint">Endpoint</string>
+    <string name="label_host">Host</string>
+    <plurals name="host_projects_nodes"><item quantity="one">%1$d project · %2$d node</item><item quantity="other">%1$d projects · %2$d nodes</item></plurals>
+    <string name="direct_connection">Direct connection (SSH)</string>
+    <string name="host_address">Host address</string>
+    <string name="host_address_hint">e.g. 100.64.0.1 or host name</string>
+    <string name="off_lan_access">Off-LAN access: enter the host address to connect from anywhere. The saved SSH key keeps working, no re-pairing.</string>
+    <string name="save_reconnect">Save &amp; reconnect</string>
+    <string name="shortcuts_gestures">Shortcuts &amp; gestures</string>
+    <string name="notifications">Notifications</string>
+    <string name="host_event_notifications">Host event notifications</string>
+    <string name="notification_explanation">Needs-you / done pushes from the host (requires a Firebase project wired in — see README).</string>
+    <string name="connection_section">Connection</string>
+    <string name="disconnect_keep_pairing">Disconnect (keep pairing)</string>
+    <string name="unpair_reset">Unpair and reset</string>
+    <string name="about">About</string>
+    <string name="about_companion">nodeterm Android companion</string>
+    <string name="version">Version %1$s</string>
+    <string name="about_description">E2EE relay client — protocol docs in ANDROID_CLIENT_SPEC.md.</string>
+    <string name="language">Language</string>
+    <string name="language_system">System</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">中文</string>
+    <string name="notification_completed">Completed</string>
+    <string name="notification_needs_you">Needs you</string>
+    <string name="notification_attention">An agent on your host needs attention.</string>
+    <string name="dictate">Dictate</string><string name="microphone_permission_needed">Microphone permission needed</string><string name="microphone_permission_explanation">Allow the microphone to dictate into the terminal (like ⌘⇧D on desktop).</string><string name="cancel">Cancel</string><string name="allow">Allow</string><string name="speech_unavailable">Speech recognition is unavailable on this device.</string><string name="no_speech_try_again">No speech heard — try again.</string><string name="listening_timeout">Listening timed out — try again.</string><string name="recognition_error">Recognition error (%1$d).</string><string name="no_speech_heard">No speech heard.</string><string name="listening_speak_now">Listening… speak now</string><string name="review_then_send">Review the text, then Send</string><string name="stop">Stop</string><string name="restart">Restart</string><string name="spoken_text_placeholder">Spoken text appears here…</string><string name="send">Send</string>
 </resources>

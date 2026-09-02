@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.nodeterm.android.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +60,8 @@ import com.nodeterm.android.notify.NotificationHelper
 @Composable
 fun SettingsScreen(
     state: RelayUiState,
+    language: String,
+    onLanguageChange: (String) -> Unit,
     onBack: () -> Unit,
     onDisconnect: () -> Unit,
     onUnpair: () -> Unit,
@@ -97,24 +102,24 @@ fun SettingsScreen(
             .padding(horizontal = 16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
-            Text("Settings", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+            Text(stringResource(R.string.settings_title), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(8.dp))
 
-        SectionTitle("Session")
-        InfoRow("Connection", if (state.connected) "connected" else "disconnected")
+        SectionTitle(stringResource(R.string.settings_session))
+        InfoRow(stringResource(R.string.label_connection), if (state.connected) stringResource(R.string.state_connected) else stringResource(R.string.state_disconnected))
         InfoRow("Channel SAS", if (state.sas.isBlank()) "—" else state.sas, monospace = true)
         // The transport this session rides on — relay URL or the free-tier LAN/SSH endpoint.
         if (state.relayEndpoint.isNotBlank()) {
             InfoRow(
-                "Endpoint",
+                stringResource(R.string.label_endpoint),
                 state.relayEndpoint,
                 monospace = true
             )
         }
         if (state.projects.isNotEmpty() || state.nodes.isNotEmpty()) {
-            InfoRow("Host", "${state.projects.size} project${if (state.projects.size == 1) "" else "s"} · ${state.nodes.size} node${if (state.nodes.size == 1) "" else "s"}")
+            InfoRow(stringResource(R.string.label_host), stringResource(R.plurals.host_projects_nodes, state.projects.size, state.projects.size, state.nodes.size))
         }
 
         // Direct SSH host override — the free-tier transport's host comes from the pairing QR
@@ -123,18 +128,17 @@ fun SettingsScreen(
         if (state.lanHost.isNotBlank()) {
             var hostDraft by remember(state.lanHost) { mutableStateOf(state.lanHost) }
             Spacer(Modifier.height(16.dp))
-            SectionTitle("Direct connection (SSH)")
+            SectionTitle(stringResource(R.string.direct_connection))
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = hostDraft,
                 onValueChange = { hostDraft = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Host address") },
-                placeholder = { Text("e.g. 100.64.0.1 or host name") },
+                label = { Text(stringResource(R.string.host_address)) },
+                placeholder = { Text(stringResource(R.string.host_address_hint)) },
                 supportingText = {
                     Text(
-                        "Off-LAN access: enter the host's Tailscale IP to connect from anywhere — " +
-                            "the saved SSH key keeps working, no re-pairing."
+                        stringResource(R.string.off_lan_access)
                     )
                 },
                 singleLine = true
@@ -145,7 +149,7 @@ fun SettingsScreen(
                 enabled = hostDraft.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Save & reconnect")
+                Text(stringResource(R.string.save_reconnect))
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -154,7 +158,7 @@ fun SettingsScreen(
         // Desktop parity: the host shows `⌘/` shortcuts — the phone's gestures are the same
         // muscle memory, mapped onto touch. Each row names the desktop action and the gesture.
         Spacer(Modifier.height(16.dp))
-        SectionTitle("Shortcuts & gestures")
+        SectionTitle(stringResource(R.string.shortcuts_gestures))
         ShortcutRow(Icons.Outlined.Search, "Jump anywhere (⌘K)", "Tap the search icon in the home header")
         ShortcutRow(Icons.Outlined.TouchApp, "Node actions (right-click)", "Long-press a node card")
         ShortcutRow(Icons.Outlined.CenterFocusStrong, "Focus a canvas node", "Double-tap it on the board")
@@ -164,13 +168,23 @@ fun SettingsScreen(
         HorizontalDivider()
 
         Spacer(Modifier.height(16.dp))
-        SectionTitle("Notifications")
+        SectionTitle(stringResource(R.string.language))
+        Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            listOf("system" to R.string.language_system, "en" to R.string.language_english, "zh" to R.string.language_chinese).forEach { (code, label) ->
+                FilterChip(selected = language == code, onClick = { onLanguageChange(code) }, label = { Text(stringResource(label)) })
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+
+        Spacer(Modifier.height(16.dp))
+        SectionTitle(stringResource(R.string.notifications))
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Host event notifications", fontSize = 14.sp)
+                Text(stringResource(R.string.host_event_notifications), fontSize = 14.sp)
                 Text(
-                    "Needs-you / done pushes from the host (requires a Firebase project wired in — see README).",
+                    stringResource(R.string.notification_explanation),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -190,10 +204,10 @@ fun SettingsScreen(
         HorizontalDivider()
 
         Spacer(Modifier.height(16.dp))
-        SectionTitle("Connection")
+        SectionTitle(stringResource(R.string.connection_section))
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) {
-            Text("Disconnect (keep pairing)")
+            Text(stringResource(R.string.disconnect_keep_pairing))
         }
         Spacer(Modifier.height(8.dp))
         Button(
@@ -201,19 +215,19 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
         ) {
-            Text("Unpair and reset")
+            Text(stringResource(R.string.unpair_reset))
         }
         Spacer(Modifier.height(24.dp))
         HorizontalDivider()
 
         Spacer(Modifier.height(16.dp))
-        SectionTitle("About")
+        SectionTitle(stringResource(R.string.about))
         Spacer(Modifier.height(6.dp))
-        InfoRow("nodeterm Android companion", "Version $versionName")
+        InfoRow(stringResource(R.string.about_companion), stringResource(R.string.version, versionName))
         LinkRow("nodeterm.dev", "https://nodeterm.dev", openLink)
         LinkRow("GitHub · eneskirca/nodeterm", "https://github.com/eneskirca/nodeterm", openLink)
         Text(
-            "E2EE relay client — protocol docs in ANDROID_CLIENT_SPEC.md.",
+            stringResource(R.string.about_description),
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 16.sp,

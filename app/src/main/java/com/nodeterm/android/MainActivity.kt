@@ -1,6 +1,7 @@
 package com.nodeterm.android
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -41,6 +42,10 @@ import com.nodeterm.android.notify.NotificationHelper
 import com.nodeterm.android.ui.theme.NodetermTheme
 
 class MainActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleManager.wrap(newBase))
+    }
 
     private var viewModel: RelayViewModel? = null
     /** Deep-link code arriving before the ViewModel exists (cold start via `nodeterm://pair`). */
@@ -283,6 +288,11 @@ class MainActivity : ComponentActivity() {
                         composable("settings") {
                             SettingsScreen(
                                 state = ui,
+                                language = com.nodeterm.android.data.UiPrefsStore(this@MainActivity).language,
+                                onLanguageChange = { code ->
+                                    LocaleManager.setLocale(this@MainActivity, code)
+                                    recreate()
+                                },
                                 onBack = { nav.popBackStack() },
                                 onDisconnect = { viewModel.disconnect() },
                                 onUnpair = {

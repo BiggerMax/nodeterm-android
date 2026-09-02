@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.nodeterm.android.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -80,7 +82,7 @@ fun DictationButton(
     ) {
         Icon(
             imageVector = Icons.Outlined.Mic,
-            contentDescription = "Dictate",
+            contentDescription = stringResource(R.string.dictate),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
         )
@@ -94,10 +96,10 @@ fun DictationButton(
                     .background(MaterialTheme.colorScheme.surface)
                     .padding(20.dp)
             ) {
-                Text("Microphone permission needed", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text(stringResource(R.string.microphone_permission_needed), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Allow the microphone to dictate into the terminal (like ⌘⇧D on desktop).",
+                    stringResource(R.string.microphone_permission_explanation),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -106,13 +108,13 @@ fun DictationButton(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = { denied = false }) { Text("Cancel") }
+                    TextButton(onClick = { denied = false }) { Text(stringResource(R.string.cancel)) }
                     TextButton(
                         onClick = {
                             denied = false
                             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
-                    ) { Text("Allow") }
+                    ) { Text(stringResource(R.string.allow)) }
                 }
             }
         }
@@ -149,7 +151,7 @@ private fun DictationSheet(
 
     fun startListening() {
         val sr = recognizer ?: run {
-            engineError = "Speech recognition is unavailable on this device."
+            engineError = context.getString(R.string.speech_unavailable)
             return
         }
         // Re-armed on every start: a recognizer that errored out must not keep the old listener.
@@ -169,9 +171,9 @@ private fun DictationSheet(
             override fun onError(error: Int) {
                 listening = false
                 engineError = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech heard — try again."
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Listening timed out — try again."
-                    else -> "Recognition error ($error)."
+                    SpeechRecognizer.ERROR_NO_MATCH -> context.getString(R.string.no_speech_try_again)
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> context.getString(R.string.listening_timeout)
+                    else -> context.getString(R.string.recognition_error, error)
                 }
             }
             override fun onResults(results: android.os.Bundle?) {
@@ -180,7 +182,7 @@ private fun DictationSheet(
                     ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull()
                 if (!text.isNullOrBlank()) transcript = text
-                else if (transcript.isBlank()) engineError = "No speech heard."
+                else if (transcript.isBlank()) engineError = context.getString(R.string.no_speech_heard)
             }
             override fun onPartialResults(partialResults: android.os.Bundle?) {
                 val text = partialResults
@@ -203,9 +205,9 @@ private fun DictationSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Dictate", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.dictate), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        if (listening) "Listening… speak now" else "Review the text, then Send",
+                        if (listening) stringResource(R.string.listening_speak_now) else stringResource(R.string.review_then_send),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -213,7 +215,7 @@ private fun DictationSheet(
                 TextButton(onClick = {
                     if (listening) recognizer?.cancel() else startListening()
                 }) {
-                    Text(if (listening) "Stop" else "Restart", fontSize = 12.sp)
+                    Text(if (listening) stringResource(R.string.stop) else stringResource(R.string.restart), fontSize = 12.sp)
                 }
             }
 
@@ -221,7 +223,7 @@ private fun DictationSheet(
             OutlinedTextField(
                 value = transcript,
                 onValueChange = { transcript = it },
-                placeholder = { Text("Spoken text appears here…", fontSize = 12.sp) },
+                placeholder = { Text(stringResource(R.string.spoken_text_placeholder), fontSize = 12.sp) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(120.dp)
@@ -245,12 +247,12 @@ private fun DictationSheet(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
                 Spacer(Modifier.size(6.dp))
                 Button(
                     onClick = { onSend(transcript) },
                     enabled = transcript.isNotBlank()
-                ) { Text("Send") }
+                ) { Text(stringResource(R.string.send)) }
             }
         }
     }

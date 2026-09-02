@@ -1,6 +1,7 @@
 package com.nodeterm.android.notify
 
 import com.google.firebase.FirebaseApp
+import com.nodeterm.android.R
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
@@ -26,10 +27,10 @@ class NodetermMessagingService : FirebaseMessagingService() {
         val data = message.data
         val title = message.notification?.title
             ?: data["title"]
-            ?: if (data["kind"] == "done") "Completed" else "Needs you"
+            ?: if (data["kind"] == "done") getString(R.string.notification_completed) else getString(R.string.notification_needs_you)
         val body = message.notification?.body
             ?: data["body"]
-            ?: "An agent on your host needs attention."
+            ?: getString(R.string.notification_attention)
         val nodeId = data["nodeId"]
         val id = (data["eventId"] ?: nodeId ?: title).hashCode()
         NotificationHelper.show(applicationContext, title, body, nodeId, id)

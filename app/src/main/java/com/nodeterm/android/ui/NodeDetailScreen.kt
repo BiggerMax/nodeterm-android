@@ -1,5 +1,6 @@
 package com.nodeterm.android.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -31,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -154,6 +156,13 @@ fun NodeDetailScreen(
     }
 }
 
+/**
+ * One send press can reach the carrier twice — an Enter KeyEvent AND the ImeAction (Sogou and
+ * Gboard deliver differently). Anything within this window after a forwarded "\n" is the same
+ * press; a human cannot legitimately submit twice this fast.
+ */
+private const val NEWLINE_DEDUPE_MS = 150L
+
 /** The terminal canvas + the hidden IME carrier. Tap anywhere to open the keyboard. */
 @Composable
 private fun TapToTypeTerminal(
@@ -168,6 +177,35 @@ private fun TapToTypeTerminal(
     // The IME carrier's text. It accumulates the typed text (transparent, 1px, single-line) so
     // backspace and IME prediction keep working — each change is diffed and forwarded to the pty.
     var carrier by remember { mutableStateOf(TextFieldValue("")) }
+    // Set when the user presses send/enter while the IME still holds an uncommitted composition
+    // (pinyin → hanzi). The newline must NOT race the commit: it is flushed in onValueChange right
+    // AFTER the committed text is forwarded, never before it.
+    var pendingNewline by remember { mutableStateOf(false) }
+    // Uptime of the last "\n" forwarded. One send press can be delivered twice (an Enter key
+    // event AND the editor action — Sogou/Gboard differ); the second delivery within a few frames
+    // is the same press and must not submit a duplicate empty line.
+    var lastNewlineMs by remember { mutableLongStateOf(0L) }
+
+    /** Forward "\n" to the pty, collapsing double deliveries of the same send press. */
+    fun sendNewline() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastNewlineMs < NEWLINE_DEDUPE_MS) return
+        lastNewlineMs = now
+        onSendInput("\n")
+    }
+
+    /**
+     * A send / enter press. If the IME is mid-composition the newline must wait for the commit
+     * (it arrives via onValueChange right after the committed text); otherwise it goes straight
+     * to the pty.
+     */
+    fun submitLine() {
+        if (carrier.composition != null) {
+            pendingNewline = true
+        } else {
+            sendNewline()
+        }
+    }
 
     // FocusRequester.requestFocus() is applied on the NEXT layout pass, so calling the platform
     // InputMethodManager before focus actually lands is dropped by some IMEs (the pop then never
@@ -251,12 +289,31 @@ private fun TapToTypeTerminal(
             value = carrier,
             onValueChange = { new ->
                 val oldStr = carrier.text
+                // Where the composition started in the OLD value — the pty already holds that
+                // prefix, so a commit can be forwarded relative to it instead of by raw length.
+                val oldCompositionStart = carrier.composition?.start
                 val newStr = new.text
                 val composing = new.composition != null
+                val wasComposing = carrier.composition != null
                 carrier = new
                 if (composing) return@BasicTextField // hold pinyin mid-state; commit sends below
                 when {
-                    // Plain append (typing, IME commit) — forward the added suffix.
+                    // An IME composition just committed (pinyin → hanzi). The composing text was
+                    // held in the carrier and never forwarded, so diffing oldStr against newStr
+                    // would look like random edits (e.g. "nihao" → "你好" reads as 3 deletions
+                    // and the hanzi is dropped — the message never reaches the pty). The pty is
+                    // sitting at the pre-composition prefix: type just the committed suffix, or
+                    // rewind and retype when the IME rewrote text before the composition.
+                    wasComposing -> {
+                        val prefix = oldCompositionStart?.let { oldStr.substring(0, it) } ?: ""
+                        if (newStr.startsWith(prefix)) {
+                            onSendInput(newStr.substring(prefix.length))
+                        } else {
+                            repeat(prefix.length) { onSendInput("\u007f") }
+                            onSendInput(newStr)
+                        }
+                    }
+                    // Plain append (typing) — forward the added suffix.
                     newStr.length > oldStr.length && newStr.startsWith(oldStr) ->
                         onSendInput(newStr.substring(oldStr.length))
                     // Deletion — forward backspaces.
@@ -264,6 +321,14 @@ private fun TapToTypeTerminal(
                         repeat(oldStr.length - newStr.length) { onSendInput("\u007f") }
                     // Mid-string edits are rare (IME corrections); ignore to keep the pty in sync.
                     else -> {}
+                }
+                // A send pressed during composition: the IME commits the composition via this
+                // onValueChange (the diff above just forwarded the text) BEFORE or instead of
+                // firing the editor action — deliver the queued newline only now, after the
+                // text. A commit that cancelled to empty text submits nothing.
+                if (pendingNewline) {
+                    pendingNewline = false
+                    if (wasComposing && newStr.isNotEmpty()) sendNewline()
                 }
             },
             modifier = Modifier
@@ -273,16 +338,19 @@ private fun TapToTypeTerminal(
                     carrierFocused = fs.isFocused
                     if (!fs.isFocused) {
                         showImeWhenFocused = false
+                        pendingNewline = false // drop a queued send if focus moves away uncommitted
                     } else if (showImeWhenFocused) {
                         showImeWhenFocused = false
                         FastKeyboard.show(view)
                     }
                 }
-                // Hardware Enter → "\n" (consume it so BasicTextField never turns it into an IME
-                // action — soft-keyboard Enter flows through ImeAction.Send below instead).
+                // Enter → "\n". This catches BOTH hardware Enter and the soft-keyboard action key
+                // (the IME delivers it as a KeyEvent here too, so ImeAction.Send's onSend below
+                // is the fallback, not the primary path). While a composition is pending the
+                // newline is queued behind the commit instead of racing it (see onValueChange).
                 .onPreviewKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown && event.key == Key.Enter && !event.isShiftPressed) {
-                        onSendInput("\n")
+                        submitLine()
                         true
                     } else {
                         false
@@ -298,7 +366,7 @@ private fun TapToTypeTerminal(
                 autoCorrectEnabled = false,
                 imeAction = ImeAction.Send
             ),
-            keyboardActions = KeyboardActions(onSend = { onSendInput("\n") })
+            keyboardActions = KeyboardActions(onSend = { submitLine() })
         )
     }
 }

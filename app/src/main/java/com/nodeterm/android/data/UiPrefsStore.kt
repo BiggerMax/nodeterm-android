@@ -17,6 +17,11 @@ class UiPrefsStore(context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** UI language: system, en, or zh. */
+    var language: String
+        get() = prefs.getString(KEY_LANGUAGE, "system") ?: "system"
+        set(value) = prefs.edit().putString(KEY_LANGUAGE, value).apply()
+
     /** nodeIds the user swiped away in the Nodes list (hidden on this device only). */
     var dismissedNodes: Set<String>
         get() = prefs.getStringSet(KEY_DISMISSED_NODES, emptySet()) ?: emptySet()
@@ -38,5 +43,6 @@ class UiPrefsStore(context: Context) {
         const val KEY_DISMISSED_NODES = "dismissedNodes"
         const val KEY_DISMISSED_INBOX = "dismissedInbox"
         const val KEY_NODE_ORDER = "nodeOrder"
+        const val KEY_LANGUAGE = "language"
     }
 }
