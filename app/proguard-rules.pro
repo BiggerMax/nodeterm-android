@@ -24,3 +24,10 @@
 
 # Keep the FCM service names.
 -keep class com.nodeterm.android.notify.NodetermMessagingService { *; }
+
+# sshj's GSS-API auth code references JRE-only classes (javax.security.auth.login,
+# org.ietf.jgss, sun.security.x509) that Android doesn't ship. GSS auth is never
+# used on this platform, so just suppress the missing-class warnings.
+-dontwarn javax.security.auth.login.**
+-dontwarn org.ietf.jgss.**
+-dontwarn sun.security.x509.**
