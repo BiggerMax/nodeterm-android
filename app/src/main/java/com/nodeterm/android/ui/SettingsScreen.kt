@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.nodeterm.android.R
 import androidx.compose.ui.text.font.FontFamily
@@ -119,7 +120,15 @@ fun SettingsScreen(
             )
         }
         if (state.projects.isNotEmpty() || state.nodes.isNotEmpty()) {
-            InfoRow(stringResource(R.string.label_host), stringResource(R.plurals.host_projects_nodes, state.projects.size, state.projects.size, state.nodes.size))
+            InfoRow(
+                stringResource(R.string.label_host),
+                pluralStringResource(
+                    R.plurals.host_projects_nodes,
+                    state.projects.size,
+                    state.projects.size,
+                    state.nodes.size
+                )
+            )
         }
 
         // Direct SSH host override — the free-tier transport's host comes from the pairing QR
@@ -161,7 +170,7 @@ fun SettingsScreen(
         SectionTitle(stringResource(R.string.shortcuts_gestures))
         ShortcutRow(Icons.Outlined.Search, "Jump anywhere (⌘K)", "Tap the search icon in the home header")
         ShortcutRow(Icons.Outlined.TouchApp, "Node actions (right-click)", "Long-press a node card")
-        ShortcutRow(Icons.Outlined.CenterFocusStrong, "Focus a canvas node", "Double-tap it on the board")
+        ShortcutRow(Icons.Outlined.CenterFocusStrong, "Focus a canvas node", "Tap an agent, or double-tap another node")
         ShortcutRow(Icons.Outlined.SwapVert, "Scroll terminal history", "Swipe up / down in the terminal")
         ShortcutRow(Icons.Outlined.Mic, "Dictate (⌘⇧D)", "Tap the mic in a terminal — review, then send")
         Spacer(Modifier.height(16.dp))

@@ -36,4 +36,136 @@
     <string name="notification_needs_you">Needs you</string>
     <string name="notification_attention">An agent on your host needs attention.</string>
     <string name="dictate">Dictate</string><string name="microphone_permission_needed">Microphone permission needed</string><string name="microphone_permission_explanation">Allow the microphone to dictate into the terminal (like ⌘⇧D on desktop).</string><string name="cancel">Cancel</string><string name="allow">Allow</string><string name="speech_unavailable">Speech recognition is unavailable on this device.</string><string name="no_speech_try_again">No speech heard — try again.</string><string name="listening_timeout">Listening timed out — try again.</string><string name="recognition_error">Recognition error (%1$d).</string><string name="no_speech_heard">No speech heard.</string><string name="listening_speak_now">Listening… speak now</string><string name="review_then_send">Review the text, then Send</string><string name="stop">Stop</string><string name="restart">Restart</string><string name="spoken_text_placeholder">Spoken text appears here…</string><string name="send">Send</string>
+    <!-- 通用/返回 -->
+    <string name="back">‹ Back</string>
+    <string name="close">‹ Close</string>
+    <string name="git">Git</string>
+    <string name="git_status">Git status</string>
+    <string name="staged">Staged</string>
+    <string name="changes">Changes</string>
+    <string name="up">Up</string>
+    <string name="refresh">Refresh</string>
+    <string name="files">Files</string>
+    <string name="empty_folder">Empty folder</string>
+    <string name="no_response">No response</string>
+    <string name="no_changes">No changes</string>
+    <string name="no_diff">No diff</string>
+    <string name="done">Done</string>
+    <string name="add">Add</string>
+    <string name="add_member">Add member</string>
+    <string name="add_a_comment">Add a comment</string>
+    <string name="comment">Comment</string>
+    <string name="clear">Clear</string>
+    <string name="clear_priority">Clear priority</string>
+    <string name="clear_due">Clear due date</string>
+    <string name="no_due_date">No due date</string>
+    <string name="no_comments_yet">No comments yet.</string>
+    <string name="clear_all">Clear all</string>
+    <!-- 看板/节点 -->
+    <string name="board">Board</string>
+    <string name="fit">Fit</string>
+    <string name="note">Note</string>
+    <string name="group">group</string>
+    <string name="ungrouped">Ungrouped</string>
+    <string name="open_terminal">Open terminal</string>
+    <!-- 首页/节点列表 -->
+    <string name="nodes_count">Nodes (%1$d)</string>
+    <string name="connected_to_host">Connected to host</string>
+    <string name="connecting_to_host">Connecting to host…</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="re_pair">Re-pair</string>
+    <string name="connection_dropped">Connection dropped</string>
+    <string name="connection_to_host_lost">Connection to the host was lost.</string>
+    <string name="no_nodes_yet">No nodes yet</string>
+    <string name="no_nodes_yet_subtitle">Start a terminal on your host — it will appear here. Sticky notes, agents and editors show up too.</string>
+    <string name="browse_files">Browse files</string>
+    <string name="copy_path">Copy path</string>
+    <string name="path_copied">Path copied</string>
+    <string name="hide">Hide</string>
+    <string name="undo">Undo</string>
+    <string name="node_hidden_snackbar">Node hidden on this device — it still runs on the host.</string>
+    <string name="needs_you_tab">Needs you (%1$d)</string>
+    <string name="approval">Approval</string>
+    <string name="question">Question</string>
+    <string name="answer_in_terminal">Answer in the node\'s terminal.</string>
+    <string name="on_host">on %1$s</string>
+    <string name="pending_count">%1$d pending</string>
+    <string name="nothing_needs_you">Nothing needs you</string>
+    <string name="nothing_needs_you_subtitle">When an agent needs approval or asks a question, it lands here.</string>
+    <string name="approve">Approve</string>
+    <string name="deny">Deny</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="more_actions">More actions</string>
+    <string name="jump_to">Jump to…</string>
+    <!-- 配对页 -->
+    <string name="pair_with_your_host">Pair with your host</string>
+    <string name="camera_permission_off">Camera permission is off — scanning needs the camera.\nYou can still paste the pairing code below.</string>
+    <string name="try_again">Try again</string>
+    <string name="open_settings">Open settings</string>
+    <string name="or_paste_pairing_code">or paste the pairing code</string>
+    <string name="pairing_code_placeholder">nodeterm://pair?code=… or host QR text</string>
+    <string name="connect">Connect</string>
+    <string name="compare_this_code">Compare this code</string>
+    <string name="compare_code_body">Your host %1$s shows the same code. Confirm only if they match — this proves you\'re talking to the right machine.</string>
+    <string name="codes_match_connect">Codes match — connect</string>
+    <!-- 命令面板 -->
+    <string name="palette_placeholder">Jump to a node, project or action…</string>
+    <string name="palette_hint">Enter / tap to jump · Esc to close</string>
+    <string name="clear_cd">Clear</string>
+    <!-- 节点详情 -->
+    <string name="no_output_yet">No output yet</string>
+    <!-- 首页补充 -->
+    <string name="board_cd">Board</string>
+    <string name="settings_cd">Settings</string>
+    <string name="other">Other</string>
+    <string name="re_pair_empty_subtitle">Re-pair with your host to see its projects again.</string>
+    <!-- 文件浏览 -->
+    <string name="file_truncated">File truncated — showing %1$d of %2$d chars</string>
+    <string name="diff_truncated">Diff truncated — showing %1$d of %2$d chars</string>
+    <string name="not_a_repo">not a repo</string>
+    <string name="clean_tree">clean tree</string>
+    <string name="git_status_counts">%1$d staged · %2$d changed</string>
+    <!-- 配对步骤 -->
+    <string name="step_on_host">On your host</string>
+    <string name="step_on_host_detail">Settings → Phone → Show pairing code</string>
+    <string name="step_on_this_phone">On this phone</string>
+    <string name="step_on_this_phone_detail">Scan the QR or paste the code below</string>
+    <string name="step_compare_codes">Compare codes</string>
+    <string name="step_compare_codes_detail">Confirm the 6-digit code matches on both</string>
+    <string name="point_at_qr">Point at the pairing QR on your host</string>
+    <!-- 命令面板 -->
+    <string name="open_board">Open board</string>
+    <string name="open_board_subtitle">Kanban &amp; canvas of the active project</string>
+    <string name="settings_subtitle">Session, notifications, connection</string>
+    <string name="re_pair_subtitle">Scan a fresh pairing code</string>
+    <string name="palette_no_matches">No matches for “%1$s”</string>
+    <string name="nodes">Nodes</string>
+    <string name="actions">Actions</string>
+    <!-- 看板/画布 -->
+    <string name="canvas">Canvas</string>
+    <string name="no_kanban_yet">No kanban board for this project yet.</string>
+    <string name="no_canvas_yet">No canvas yet — refresh to pull the host\'s board.</string>
+    <string name="group_title">Group</string>
+    <plurals name="node_count"><item quantity="one">%1$d node</item><item quantity="other">%1$d nodes</item></plurals>
+    <string name="priority">Priority</string>
+    <string name="members">Members</string>
+    <string name="labels">Labels</string>
+    <string name="due">Due</string>
+    <string name="comments">Comments</string>
+    <string name="priority_low">Low</string>
+    <string name="priority_medium">Medium</string>
+    <string name="priority_high">High</string>
+    <string name="priority_urgent">Urgent</string>
+    <!-- 节点详情 -->
+    <string name="attach_failed">attach failed: %1$s</string>
+    <string name="ended_exit">ended (exit %1$s)</string>
+    <string name="attaching">attaching…</string>
+    <string name="terminal_size_hint">%1$d×%2$d · tap terminal to type</string>
+    <string name="now_label">NOW</string>
+    <string name="you_prompt">You: %1$s</string>
+    <!-- 内置键盘 -->
+    <string name="keyboard_send">Send</string>
+    <string name="keyboard_paste">Paste</string>
+    <string name="keyboard_mode_zh">中</string>
+    <string name="keyboard_mode_en">EN</string>
 </resources>

@@ -47,6 +47,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.nodeterm.android.R
 import com.nodeterm.android.core.model.Project
 
 /**
@@ -85,27 +87,34 @@ fun CommandPalette(
     var popImeWhenFocused by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    val actionEntries = remember(projects, connected) {
+    val openBoardLabel = stringResource(R.string.open_board)
+    val openBoardSubtitle = stringResource(R.string.open_board_subtitle)
+    val browseFilesLabel = stringResource(R.string.browse_files)
+    val settingsLabel = stringResource(R.string.settings_title)
+    val settingsSubtitle = stringResource(R.string.settings_subtitle)
+    val rePairLabel = stringResource(R.string.re_pair)
+    val rePairSubtitle = stringResource(R.string.re_pair_subtitle)
+    val actionEntries = remember(projects, connected, openBoardLabel, openBoardSubtitle, browseFilesLabel, settingsLabel, settingsSubtitle, rePairLabel, rePairSubtitle) {
         buildList {
             add(
-                PaletteAction("board", "Open board", "Kanban & canvas of the active project",
+                PaletteAction("board", openBoardLabel, openBoardSubtitle,
                     Icons.Outlined.ViewKanban, Color(0xFF58A6FF))
             )
             projects.forEach { p ->
                 p.cwd?.takeIf { it.isNotBlank() }?.let { cwd ->
                     add(
-                        PaletteAction("files:${p.id}", "Browse files", "${p.name.ifBlank { p.id }} — $cwd",
+                        PaletteAction("files:${p.id}", browseFilesLabel, "${p.name.ifBlank { p.id }} — $cwd",
                             Icons.Outlined.FolderOpen, Color(0xFF39C5CF))
                     )
                 }
             }
             add(
-                PaletteAction("settings", "Settings", "Session, notifications, connection",
+                PaletteAction("settings", settingsLabel, settingsSubtitle,
                     Icons.Outlined.Settings, Color(0xFF8B949E))
             )
             if (!connected) {
                 add(
-                    PaletteAction("repair", "Re-pair", "Scan a fresh pairing code",
+                    PaletteAction("repair", rePairLabel, rePairSubtitle,
                         Icons.Outlined.Refresh, Color(0xFFFF7B72))
                 )
             }
@@ -176,12 +185,12 @@ fun CommandPalette(
                             else -> false
                         }
                     },
-                placeholder = { Text("Jump to a node, project or action…", fontSize = 14.sp) },
+                placeholder = { Text(stringResource(R.string.palette_placeholder), fontSize = 14.sp) },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
                         IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.clear_cd), modifier = Modifier.size(18.dp))
                         }
                     }
                 },
@@ -201,7 +210,7 @@ fun CommandPalette(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "No matches for “$query”",
+                        stringResource(R.string.palette_no_matches, query),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -209,7 +218,7 @@ fun CommandPalette(
             } else {
                 LazyColumn(Modifier.heightIn(max = 400.dp)) {
                     if (nodeResults.isNotEmpty()) {
-                        item(key = "hdr-nodes") { PaletteSectionHeader("Nodes") }
+                        item(key = "hdr-nodes") { PaletteSectionHeader(stringResource(R.string.nodes)) }
                         items(nodeResults, key = { it.key }) { entry ->
                             PaletteRow(
                                 entry = entry,
@@ -219,7 +228,7 @@ fun CommandPalette(
                         }
                     }
                     if (actionResults.isNotEmpty()) {
-                        item(key = "hdr-actions") { PaletteSectionHeader("Actions") }
+                        item(key = "hdr-actions") { PaletteSectionHeader(stringResource(R.string.actions)) }
                         items(actionResults, key = { it.key }) { entry ->
                             PaletteRow(
                                 entry = entry,
@@ -232,7 +241,7 @@ fun CommandPalette(
             }
 
             Text(
-                text = "Enter / tap to jump  ·  Esc to close",
+                text = stringResource(R.string.palette_hint),
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)

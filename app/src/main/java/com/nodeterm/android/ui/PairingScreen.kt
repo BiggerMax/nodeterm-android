@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.nodeterm.android.R
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -107,7 +109,7 @@ fun PairingScreen(onCode: (String) -> Unit) {
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            text = "Pair with your host",
+            text = stringResource(R.string.pair_with_your_host),
             fontSize = 15.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -127,7 +129,7 @@ fun PairingScreen(onCode: (String) -> Unit) {
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "Camera permission is off — scanning needs the camera.\nYou can still paste the pairing code below.",
+                    text = stringResource(R.string.camera_permission_off),
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
@@ -136,7 +138,7 @@ fun PairingScreen(onCode: (String) -> Unit) {
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                        Text("Try again", fontSize = 12.sp)
+                        Text(stringResource(R.string.try_again), fontSize = 12.sp)
                     }
                     TextButton(
                         onClick = {
@@ -147,14 +149,14 @@ fun PairingScreen(onCode: (String) -> Unit) {
                                 )
                             )
                         }
-                    ) { Text("Open settings", fontSize = 12.sp) }
+                    ) { Text(stringResource(R.string.open_settings), fontSize = 12.sp) }
                 }
             }
         }
 
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "or paste the pairing code",
+            text = stringResource(R.string.or_paste_pairing_code),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -163,7 +165,7 @@ fun PairingScreen(onCode: (String) -> Unit) {
             value = pasted,
             onValueChange = { pasted = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("nodeterm://pair?code=… or host QR text") },
+            placeholder = { Text(stringResource(R.string.pairing_code_placeholder)) },
             singleLine = true
         )
         Spacer(Modifier.height(12.dp))
@@ -172,7 +174,7 @@ fun PairingScreen(onCode: (String) -> Unit) {
             enabled = pasted.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Connect")
+            Text(stringResource(R.string.connect))
         }
 
         Spacer(Modifier.height(16.dp))
@@ -193,11 +195,11 @@ private fun PairingSteps() {
             )
             .padding(12.dp)
     ) {
-        StepRow(1, "On your host", "Settings → Phone → Show pairing code")
+        StepRow(1, stringResource(R.string.step_on_host), stringResource(R.string.step_on_host_detail))
         Spacer(Modifier.height(8.dp))
-        StepRow(2, "On this phone", "Scan the QR or paste the code below")
+        StepRow(2, stringResource(R.string.step_on_this_phone), stringResource(R.string.step_on_this_phone_detail))
         Spacer(Modifier.height(8.dp))
-        StepRow(3, "Compare codes", "Confirm the 6-digit code matches on both")
+        StepRow(3, stringResource(R.string.step_compare_codes), stringResource(R.string.step_compare_codes_detail))
     }
 }
 
@@ -324,7 +326,7 @@ private fun ScanOverlay() {
                 .border(1.5.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
         )
         Text(
-            "Point at the pairing QR on your host",
+            stringResource(R.string.point_at_qr),
             fontSize = 12.sp,
             color = Color.White.copy(alpha = 0.9f),
             modifier = Modifier
@@ -381,7 +383,7 @@ fun ConnectingView() {
     ) {
         CircularProgressIndicator()
         Spacer(Modifier.height(16.dp))
-        Text("Connecting to host…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.connecting_to_host), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -411,23 +413,23 @@ fun SasScreen(sas: String, hostLabel: String, onConfirm: () -> Unit, onCancel: (
         }
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "Compare this code",
+            text = stringResource(R.string.compare_this_code),
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Your host $hostLabel shows the same code. Confirm only if they match — this proves you're talking to the right machine.",
+            text = stringResource(R.string.compare_code_body, hostLabel),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(28.dp))
         Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) {
-            Text("Codes match — connect")
+            Text(stringResource(R.string.codes_match_connect))
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-            Text("Cancel")
+            Text(stringResource(R.string.cancel))
         }
     }
 }

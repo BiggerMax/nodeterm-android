@@ -41,6 +41,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.nodeterm.android.R
 import com.nodeterm.android.core.model.BoardLogAuthor
 import com.nodeterm.android.core.model.CanvasNode
 import com.nodeterm.android.core.model.Kanban
@@ -60,12 +62,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val PRIORITIES = listOf(
-    "low" to "Low",
-    "medium" to "Medium",
-    "high" to "High",
-    "urgent" to "Urgent"
-)
+private val PRIORITY_KEYS = listOf("low", "medium", "high", "urgent")
 
 /** A card currently being dragged, positioned in window coordinates. */
 private data class DragState(val id: String, val pos: Offset)
@@ -81,8 +78,9 @@ fun KanbanBoard(
     modifier: Modifier = Modifier
 ) {
     val allNodes = remember(nodes) { nodes.associateBy { it.id } }
-    val columnDefs = remember(board) {
-        board.columns + KanbanColumn(id = Kanban.UNGROUPED_ID, title = Kanban.UNGROUPED_TITLE, color = "gray")
+    val ungroupedTitle = stringResource(R.string.ungrouped)
+    val columnDefs = remember(board, ungroupedTitle) {
+        board.columns + KanbanColumn(id = Kanban.UNGROUPED_ID, title = ungroupedTitle, color = "gray")
     }
     val hostAssignments = board.assignments
     val hostKey = remember(board.columns, hostAssignments, nodes) {
@@ -350,13 +348,14 @@ private fun KanbanCard(
                 Spacer(Modifier.width(6.dp))
                 StatusBadge(status)
             }
-            val chips = remember(meta, labels) {
-                val list = mutableListOf<String>()
-                meta.priority?.let { list += priorityLabel(it) }
-                (meta.assignees ?: emptyList()).take(2).forEach { list += it.name }
-                (meta.labels ?: emptyList()).take(2).mapNotNull { lid -> labels.find { it.id == lid }?.name }
-                    .forEach { list += it }
-                list
+            val priorityChip = meta.priority?.let { priorityLabel(it) }
+            val chips = remember(meta, labels, priorityChip) {
+                buildList {
+                    priorityChip?.let { add(it) }
+                    (meta.assignees ?: emptyList()).take(2).forEach { add(it.name) }
+                    (meta.labels ?: emptyList()).take(2).mapNotNull { lid -> labels.find { it.id == lid }?.name }
+                        .forEach { add(it) }
+                }
             }
             if (chips.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
@@ -434,7 +433,7 @@ private fun KanbanCardModal(
                         StatusBadge(status)
                     }
                 }
-                TextButton(onClick = onClose) { Text("Done") }
+                TextButton(onClick = onClose) { Text(stringResource(R.string.done)) }
             }
             cwd?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(8.dp))
@@ -449,26 +448,26 @@ private fun KanbanCardModal(
             }
 
             Spacer(Modifier.height(14.dp))
-            SectionLabel("Priority")
+            SectionLabel(stringResource(R.string.priority))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                PRIORITIES.forEach { (k, label) ->
+                PRIORITY_KEYS.forEach { k ->
                     val sel = meta.priority == k
                     FilterChip(
                         selected = sel,
                         onClick = { onSetPriority(if (sel) null else k) },
-                        label = { Text(label, fontSize = 12.sp) }
+                        label = { Text(priorityLabel(k), fontSize = 12.sp) }
                     )
                 }
             }
             if (meta.priority != null) {
                 Spacer(Modifier.height(2.dp))
                 TextButton(onClick = { onSetPriority(null) }, modifier = Modifier.height(28.dp)) {
-                    Text("Clear priority", fontSize = 11.sp)
+                    Text(stringResource(R.string.clear_priority), fontSize = 11.sp)
                 }
             }
 
             Spacer(Modifier.height(12.dp))
-            SectionLabel("Members")
+            SectionLabel(stringResource(R.string.members))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 (meta.assignees ?: emptyList()).forEach { a ->
                     FilterChip(selected = true, onClick = { onToggleAssignee(a.name) }, label = { Text(a.name, fontSize = 11.sp) })
@@ -478,7 +477,7 @@ private fun KanbanCardModal(
                 OutlinedTextField(
                     value = newAssignee,
                     onValueChange = { newAssignee = it },
-                    placeholder = { Text("Add member", fontSize = 12.sp) },
+                    placeholder = { Text(stringResource(R.string.add_member), fontSize = 12.sp) },
                     singleLine = true,
                     modifier = Modifier.weight(1f).height(52.dp),
                     textStyle = TextStyle(fontSize = 12.sp)
@@ -491,12 +490,12 @@ private fun KanbanCardModal(
                             newAssignee = ""
                         }
                     }
-                ) { Text("Add") }
+                ) { Text(stringResource(R.string.add)) }
             }
 
             if (labels.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                SectionLabel("Labels")
+                SectionLabel(stringResource(R.string.labels))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     labels.forEach { l ->
                         val on = (meta.labels ?: emptyList()).contains(l.id)
@@ -506,21 +505,21 @@ private fun KanbanCardModal(
             }
 
             Spacer(Modifier.height(12.dp))
-            SectionLabel("Due")
+            SectionLabel(stringResource(R.string.due))
             val due = meta.dueAt
             if (due != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(formatDue(due), fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onClearDue, modifier = Modifier.height(28.dp)) { Text("Clear", fontSize = 11.sp) }
+                    TextButton(onClick = onClearDue, modifier = Modifier.height(28.dp)) { Text(stringResource(R.string.clear), fontSize = 11.sp) }
                 }
             } else {
-                Text("No due date", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.no_due_date), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             Spacer(Modifier.height(12.dp))
-            SectionLabel("Comments")
+            SectionLabel(stringResource(R.string.comments))
             if (comments.isEmpty()) {
-                Text("No comments yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.no_comments_yet), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 comments.forEach { c ->
                     Box(
@@ -535,7 +534,7 @@ private fun KanbanCardModal(
             OutlinedTextField(
                 value = commentText,
                 onValueChange = { commentText = it },
-                placeholder = { Text("Add a comment", fontSize = 12.sp) },
+                placeholder = { Text(stringResource(R.string.add_a_comment), fontSize = 12.sp) },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 textStyle = TextStyle(fontSize = 12.sp)
             )
@@ -546,11 +545,11 @@ private fun KanbanCardModal(
                         commentText = ""
                     }
                 }
-            ) { Text("Comment") }
+            ) { Text(stringResource(R.string.comment)) }
 
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = onOpenTerminal, modifier = Modifier.fillMaxWidth()) {
-                Text("Open terminal", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.open_terminal), fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -567,11 +566,12 @@ private fun SectionLabel(text: String) {
     )
 }
 
+@Composable
 private fun priorityLabel(p: String): String = when (p) {
-    "low" -> "Low"
-    "medium" -> "Medium"
-    "high" -> "High"
-    "urgent" -> "Urgent"
+    "low" -> stringResource(R.string.priority_low)
+    "medium" -> stringResource(R.string.priority_medium)
+    "high" -> stringResource(R.string.priority_high)
+    "urgent" -> stringResource(R.string.priority_urgent)
     else -> p
 }
 

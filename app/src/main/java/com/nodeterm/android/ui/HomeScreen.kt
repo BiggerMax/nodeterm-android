@@ -1,5 +1,9 @@
 package com.nodeterm.android.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -65,16 +69,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +87,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.nodeterm.android.R
 import com.nodeterm.android.core.model.InboxEvent
 import com.nodeterm.android.core.model.NodeStatus
 import kotlin.math.roundToInt
@@ -116,14 +121,16 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
 
     // Swipe-delete with one-tap Undo (the node keeps running on the host — we only hid it).
+    val hiddenMessage = stringResource(R.string.node_hidden_snackbar)
+    val undoLabel = stringResource(R.string.undo)
     val deleteNode: (NodeRow) -> Unit = { node ->
         // Only offer Undo when the node was actually hidden — a double-swipe on an already
         // hidden node is a no-op (hideNode returns false) and would show a dead Undo.
         if (onDeleteNode(node)) {
             scope.launch {
                 val result = deleteSnackbar.showSnackbar(
-                    message = "Node hidden on this device — it still runs on the host.",
-                    actionLabel = "Undo",
+                    message = hiddenMessage,
+                    actionLabel = undoLabel,
                     duration = SnackbarDuration.Long
                 )
                 if (result == SnackbarResult.ActionPerformed) onRestoreNode(node)
@@ -147,15 +154,15 @@ fun HomeScreen(
                         state.connected -> {
                             PulsingDot(Color(0xFF4ADE80))
                             Spacer(Modifier.width(6.dp))
-                            Text("Connected to host", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.connected_to_host), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         state.phase == Phase.CONNECTING -> {
-                            Text("Connecting to host…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.connecting_to_host), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         else -> {
                             PulsingDot(MaterialTheme.colorScheme.error, steady = true)
                             Spacer(Modifier.width(6.dp))
-                            Text("Disconnected", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.disconnected), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -163,25 +170,25 @@ fun HomeScreen(
             // NOTE: the docked recovery banner below owns the Re-pair CTA when disconnected — a
             // header button here would be a third duplicate (banner + empty state + header).
             IconButton(onClick = { paletteOpen = true }) {
-                Icon(Icons.Outlined.Search, contentDescription = "Jump to…", modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.jump_to), modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = onOpenBoard) {
-                Icon(Icons.Outlined.ViewKanban, contentDescription = "Board", modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.ViewKanban, contentDescription = stringResource(R.string.board_cd), modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = onSettings) {
-                Icon(Icons.Outlined.Settings, contentDescription = "Settings", modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_cd), modifier = Modifier.size(20.dp))
             }
         }
 
         TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Nodes (${state.nodes.size})") })
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.nodes_count, state.nodes.size)) })
             val needsCount = state.inbox.count { it.kind != "done" }
             Tab(
                 selected = tab == 1,
                 onClick = { tab = 1 },
                 text = {
                     Text(
-                        "Needs you ($needsCount)",
+                        stringResource(R.string.needs_you_tab, needsCount),
                         color = if (needsCount > 0) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (needsCount > 0) FontWeight.SemiBold else FontWeight.Normal
@@ -217,7 +224,7 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text = state.disconnectReason ?: "Connection to the host was lost.",
+                    text = state.disconnectReason ?: stringResource(R.string.connection_to_host_lost),
                     modifier = Modifier.weight(1f),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.error,
@@ -227,7 +234,7 @@ fun HomeScreen(
                 if (onRepair != null) {
                     Spacer(Modifier.width(6.dp))
                     TextButton(onClick = onRepair) {
-                        Text("Re-pair", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.re_pair), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -288,9 +295,10 @@ private fun NodesTab(
             (p.name.ifBlank { p.cwd?.ifBlank { null } ?: p.id }) to p.color
         }
     }
-    val groups = remember(state.nodes) {
+    val otherLabel = stringResource(R.string.other)
+    val groups = remember(state.nodes, otherLabel) {
         state.nodes
-            .groupBy { it.projectName.ifBlank { it.cwd ?: "Other" } }
+            .groupBy { it.projectName.ifBlank { it.cwd ?: otherLabel } }
             .toList()
             .sortedBy { (name, _) -> name.lowercase() }
     }
@@ -386,17 +394,17 @@ private fun NodesTab(
         if (state.nodes.isEmpty()) {
             if (state.phase == Phase.DISCONNECTED) {
                 EmptyState(
-                    title = "Connection dropped",
+                    title = stringResource(R.string.connection_dropped),
                     subtitle = state.disconnectReason
-                        ?: "Re-pair with your host to see its projects again.",
+                        ?: stringResource(R.string.re_pair_empty_subtitle),
                     icon = Icons.Outlined.CloudOff,
-                    actionLabel = "Re-pair",
+                    actionLabel = stringResource(R.string.re_pair),
                     onAction = onRepair
                 )
             } else {
                 EmptyState(
-                    title = "No nodes yet",
-                    subtitle = "Start a terminal on your host — it will appear here. Sticky notes, agents and editors show up too.",
+                    title = stringResource(R.string.no_nodes_yet),
+                    subtitle = stringResource(R.string.no_nodes_yet_subtitle),
                     icon = Icons.Outlined.Terminal
                 )
             }
@@ -425,7 +433,7 @@ private fun NodesTab(
                                 if (node.cwd != null) {
                                     SwipeActionButton(
                                         icon = Icons.Outlined.Folder,
-                                        label = "Files",
+                                        label = stringResource(R.string.files),
                                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         onClick = {
@@ -436,7 +444,7 @@ private fun NodesTab(
                                 }
                                 SwipeActionButton(
                                     icon = Icons.Outlined.Delete,
-                                    label = "Hide",
+                                    label = stringResource(R.string.hide),
                                     containerColor = MaterialTheme.colorScheme.errorContainer,
                                     contentColor = MaterialTheme.colorScheme.onErrorContainer,
                                     onClick = {
@@ -621,7 +629,7 @@ private fun NodeCard(
     onBrowse: (NodeRow) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var showActions by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
 
@@ -712,7 +720,7 @@ private fun NodeCard(
                         onClick = { onBrowse(node) },
                         modifier = Modifier.padding(0.dp)
                     ) {
-                        Text("Files", fontSize = 12.sp)
+                        Text(stringResource(R.string.files), fontSize = 12.sp)
                     }
                 }
                 // Quick actions (Open terminal / Browse files / Copy path) — reachable from the
@@ -720,7 +728,7 @@ private fun NodeCard(
                 IconButton(onClick = { showActions = true }) {
                     Icon(
                         Icons.Outlined.MoreVert,
-                        contentDescription = "More actions",
+                        contentDescription = stringResource(R.string.more_actions),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -756,7 +764,7 @@ private fun NodeCard(
                         onOpenNode(node)
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Open terminal") }
+                ) { Text(stringResource(R.string.open_terminal)) }
                 if (node.cwd != null) {
                     TextButton(
                         onClick = {
@@ -764,14 +772,21 @@ private fun NodeCard(
                             onBrowse(node)
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Browse files") }
+                    ) { Text(stringResource(R.string.browse_files)) }
                     TextButton(
                         onClick = {
+                            val path = node.cwd.orEmpty()
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            clipboard?.setPrimaryClip(ClipData.newPlainText("Path", path))
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.path_copied),
+                                Toast.LENGTH_SHORT
+                            ).show()
                             showActions = false
-                            clipboard.setText(AnnotatedString(node.cwd))
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Copy path") }
+                    ) { Text(stringResource(R.string.copy_path)) }
                 }
             }
         }
@@ -806,8 +821,8 @@ private fun InboxTab(
     ) {
         if (actionable.isEmpty()) {
             EmptyState(
-                title = "Nothing needs you",
-                subtitle = "When an agent needs approval or asks a question, it lands here.",
+                title = stringResource(R.string.nothing_needs_you),
+                subtitle = stringResource(R.string.nothing_needs_you_subtitle),
                 icon = Icons.Outlined.CheckCircle
             )
         } else {
@@ -820,7 +835,7 @@ private fun InboxTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${actionable.size} pending",
+                        text = stringResource(R.string.pending_count, actionable.size),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)
@@ -832,7 +847,7 @@ private fun InboxTab(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text("Clear all")
+                        Text(stringResource(R.string.clear_all))
                     }
                 }
                 LazyColumn(
@@ -848,7 +863,7 @@ private fun InboxTab(
                             actionContent = { close ->
                                 SwipeActionButton(
                                     icon = Icons.Outlined.CheckCircle,
-                                    label = "Dismiss",
+                                    label = stringResource(R.string.dismiss),
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     onClick = {
@@ -890,7 +905,7 @@ private fun InboxCard(
                 StatusBadge(NodeStatus.NEEDS_YOU)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = if (event.kind == "approval") "Approval" else "Question",
+                    text = if (event.kind == "approval") stringResource(R.string.approval) else stringResource(R.string.question),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -913,7 +928,7 @@ private fun InboxCard(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "on $nodeName",
+                stringResource(R.string.on_host, nodeName),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -923,11 +938,11 @@ private fun InboxCard(
                     Button(
                         onClick = { onAnswer(event.nodeId, event.pendingId, "allow") },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Approve") }
+                    ) { Text(stringResource(R.string.approve)) }
                     TextButton(
                         onClick = { onAnswer(event.nodeId, event.pendingId, "deny") },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Deny") }
+                    ) { Text(stringResource(R.string.deny)) }
                 }
                 "question" -> {
                     val options = event.options ?: emptyList()
@@ -942,7 +957,7 @@ private fun InboxCard(
                         }
                     } else {
                         Text(
-                            "Answer in the node's terminal.",
+                            stringResource(R.string.answer_in_terminal),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

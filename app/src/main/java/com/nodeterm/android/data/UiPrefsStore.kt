@@ -13,7 +13,10 @@ import kotlinx.serialization.json.Json
  */
 class UiPrefsStore(context: Context) {
 
-    private val prefs = context.applicationContext.getSharedPreferences("ui", Context.MODE_PRIVATE)
+    // NB: do NOT go through context.applicationContext here — LocaleManager reads this store
+    // from Application.attachBaseContext, where applicationContext is still null. The context
+    // passed in is always a valid one (the base context or an activity), so use it directly.
+    private val prefs = context.getSharedPreferences("ui", Context.MODE_PRIVATE)
 
     private val json = Json { ignoreUnknownKeys = true }
 

@@ -31,8 +31,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nodeterm.android.R
 import com.nodeterm.android.core.model.GitFileChange
 import com.nodeterm.android.core.model.GitStatus
 import com.nodeterm.android.core.text.CodeLang
@@ -108,9 +110,9 @@ fun FileBrowserScreen(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("‹ Close") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.close)) }
             Column(Modifier.weight(1f)) {
-                Text("Files", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.files), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text(
                     browser.path,
                     fontSize = 11.sp,
@@ -121,9 +123,9 @@ fun FileBrowserScreen(
                 )
             }
             // P3: git status for this directory (read-only source control).
-            TextButton(onClick = { onOpenGit(browser.path) }) { Text("Git") }
+            TextButton(onClick = { onOpenGit(browser.path) }) { Text(stringResource(R.string.git)) }
             if (browser.path != "/") {
-                TextButton(onClick = onGoUp) { Text("Up") }
+                TextButton(onClick = onGoUp) { Text(stringResource(R.string.up)) }
             }
         }
 
@@ -140,7 +142,7 @@ fun FileBrowserScreen(
                 )
             }
             browser.entries.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Empty folder", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text(stringResource(R.string.empty_folder), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(browser.entries, key = { it.name }) { entry ->
@@ -197,7 +199,7 @@ private fun FileViewer(viewer: FileViewerState, onBack: () -> Unit) {
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
             Column(Modifier.weight(1f)) {
                 Text(viewer.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -228,7 +230,7 @@ private fun FileViewer(viewer: FileViewerState, onBack: () -> Unit) {
                     val lines = remember(text) { shown.split("\n") }
                     if (truncated) {
                         Text(
-                            "File truncated — showing ${shown.length} of ${text.length} chars",
+                            stringResource(R.string.file_truncated, shown.length, text.length),
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -318,7 +320,7 @@ private fun MarkdownFileView(text: String) {
     Column(Modifier.fillMaxSize()) {
         if (truncated) {
             Text(
-                "File truncated — showing ${shown.length} of ${text.length} chars",
+                stringResource(R.string.file_truncated, shown.length, text.length),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.tertiary,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -483,9 +485,9 @@ private fun GitScreen(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
             Column(Modifier.weight(1f)) {
-                Text("Git status", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.git_status), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text(
                     git.cwd,
                     fontSize = 11.sp,
@@ -495,7 +497,7 @@ private fun GitScreen(
                     fontFamily = FontFamily.Monospace
                 )
             }
-            TextButton(onClick = onRefresh, enabled = !git.loading) { Text("Refresh") }
+            TextButton(onClick = onRefresh, enabled = !git.loading) { Text(stringResource(R.string.refresh)) }
         }
 
         when {
@@ -506,7 +508,7 @@ private fun GitScreen(
                 Text(git.error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(24.dp))
             }
             git.status == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No response", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text(stringResource(R.string.no_response), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             else -> GitStatusList(git = git, onOpenDiff = onOpenDiff)
         }
@@ -521,7 +523,7 @@ private fun GitStatusList(git: GitState, onOpenDiff: (GitFileChange) -> Unit) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        status.repoName.ifEmpty { "not a repo" },
+                        status.repoName.ifEmpty { stringResource(R.string.not_a_repo) },
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -541,8 +543,8 @@ private fun GitStatusList(git: GitState, onOpenDiff: (GitFileChange) -> Unit) {
                     listOfNotNull(
                         if (status.ahead > 0) "↑${status.ahead}" else null,
                         if (status.behind > 0) "↓${status.behind}" else null
-                    ).joinToString(" ").ifEmpty { "clean tree" } +
-                        " · ${status.staged.size} staged · ${status.changes.size} changed",
+                    ).joinToString(" ").ifEmpty { stringResource(R.string.clean_tree) } +
+                        " · " + stringResource(R.string.git_status_counts, status.staged.size, status.changes.size),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -550,7 +552,7 @@ private fun GitStatusList(git: GitState, onOpenDiff: (GitFileChange) -> Unit) {
         }
         if (status.staged.isNotEmpty()) {
             item {
-                SectionLabel("Staged")
+                SectionLabel(stringResource(R.string.staged))
             }
             items(status.staged, key = { "s:${it.path}" }) { change ->
                 ChangeRow(change = change, onClick = { onOpenDiff(change) })
@@ -558,7 +560,7 @@ private fun GitStatusList(git: GitState, onOpenDiff: (GitFileChange) -> Unit) {
         }
         if (status.changes.isNotEmpty()) {
             item {
-                SectionLabel("Changes")
+                SectionLabel(stringResource(R.string.changes))
             }
             items(status.changes, key = { "c:${it.path}" }) { change ->
                 ChangeRow(change = change, onClick = { onOpenDiff(change) })
@@ -567,7 +569,7 @@ private fun GitStatusList(git: GitState, onOpenDiff: (GitFileChange) -> Unit) {
         if (status.staged.isEmpty() && status.changes.isEmpty()) {
             item {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-                    Text("No changes", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.no_changes), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 }
             }
         }
@@ -632,7 +634,7 @@ private fun DiffView(diff: GitDiffState, onBack: () -> Unit) {
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("‹ Git") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.git)) }
             Column(Modifier.weight(1f)) {
                 Text(diff.change.path, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -655,7 +657,7 @@ private fun DiffView(diff: GitDiffState, onBack: () -> Unit) {
                 Text(diff.error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(24.dp))
             }
             diff.text == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No diff", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text(stringResource(R.string.no_diff), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             else -> DiffLines(text = diff.text)
         }
@@ -675,7 +677,7 @@ private fun DiffLines(text: String) {
         if (truncated) {
             item {
                 Text(
-                    "Diff truncated — showing ${shown.length} of ${text.length} chars",
+                    stringResource(R.string.diff_truncated, shown.length, text.length),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.tertiary
                 )

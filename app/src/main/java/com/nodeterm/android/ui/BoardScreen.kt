@@ -52,12 +52,16 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nodeterm.android.R
 import com.nodeterm.android.core.model.CanvasNode
 import com.nodeterm.android.core.model.InboxNodeNow
 import com.nodeterm.android.core.model.NodeStatus
@@ -100,12 +104,16 @@ fun BoardScreen(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("‹ Back") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
             Column(Modifier.weight(1f)) {
-                Text("Board", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.board), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 val subtitle = listOfNotNull(
                     kanban?.activeProjectName,
-                    if (nodes.isEmpty()) null else "${nodes.size} node${if (nodes.size == 1) "" else "s"}"
+                    if (nodes.isEmpty()) null else pluralStringResource(
+                        R.plurals.node_count,
+                        nodes.size,
+                        nodes.size
+                    )
                 ).joinToString(" · ")
                 Text(
                     subtitle,
@@ -123,7 +131,10 @@ fun BoardScreen(
                     .padding(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                listOf(BoardMode.KANBAN to "Board", BoardMode.CANVAS to "Canvas").forEach { (m, label) ->
+                listOf(
+                    BoardMode.KANBAN to stringResource(R.string.board),
+                    BoardMode.CANVAS to stringResource(R.string.canvas)
+                ).forEach { (m, label) ->
                     val selected = mode == m
                     TextButton(
                         onClick = { mode = m },
@@ -141,7 +152,7 @@ fun BoardScreen(
                 }
             }
             Spacer(Modifier.width(4.dp))
-            TextButton(onClick = onRefresh) { Text("Refresh") }
+            TextButton(onClick = onRefresh) { Text(stringResource(R.string.refresh)) }
         }
 
         when (mode) {
@@ -150,7 +161,7 @@ fun BoardScreen(
                 if (board == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            "No kanban board for this project yet.",
+                            stringResource(R.string.no_kanban_yet),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp
                         )
@@ -321,7 +332,7 @@ private fun CanvasBoardScreen(
             if (nodes.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "No canvas yet — refresh to pull the host's board.",
+                        stringResource(R.string.no_canvas_yet),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp
                     )
@@ -357,20 +368,31 @@ private fun CanvasBoardScreen(
                         w = w.dp,
                         h = h.dp,
                         onClick = {
-                            // Only terminal-like nodes (terminal / agent) open as terminals —
-                            // notes and groups are read-only canvas artefacts.
-                            if (NodeKinds.TERMINAL_LIKE.contains(NodeKinds.normalize(node.kind))) {
-                                onOpenNode(
-                                    NodeRow(
-                                        nodeId = node.id,
-                                        title = node.title,
-                                        kind = node.kind,
-                                        agentId = node.agentId,
-                                        cwd = node.cwd,
-                                        projectName = "",
-                                        color = node.color
+                            when {
+                                // Agents are inspected on the canvas first; a single tap centers
+                                // the viewport on the agent instead of opening its terminal.
+                                NodeKinds.normalize(node.kind) == "agent" -> {
+                                    if (focusTarget?.nodeId == node.id) {
+                                        focusTarget = null
+                                        fitRequest++
+                                    } else {
+                                        focusTarget = FocusTarget(node.id)
+                                    }
+                                }
+                                // Ordinary terminal nodes still open their terminal on a single tap.
+                                NodeKinds.TERMINAL_LIKE.contains(NodeKinds.normalize(node.kind)) -> {
+                                    onOpenNode(
+                                        NodeRow(
+                                            nodeId = node.id,
+                                            title = node.title,
+                                            kind = node.kind,
+                                            agentId = node.agentId,
+                                            cwd = node.cwd,
+                                            projectName = "",
+                                            color = node.color
+                                        )
                                     )
-                                )
+                                }
                             }
                         },
                         onDoubleTap = {
@@ -439,7 +461,7 @@ private fun CanvasBoardScreen(
                 },
                 modifier = Modifier.height(36.dp)
             ) {
-                Text("Fit", fontSize = 12.sp)
+                Text(stringResource(R.string.fit), fontSize = 12.sp)
             }
             Spacer(Modifier.width(8.dp))
             IconButton(onClick = { zoomBy(scale * 1.3f) }) {
@@ -470,16 +492,14 @@ private fun CanvasMinimap(
     onPanBy: (dx: Float, dy: Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // The minimap zooms in on the node cluster itself (node bounds + a small margin) rather than
-    // the full PAD-padded content box — the canvas' 160-unit padding would otherwise dwarf the
-    // nodes into a tiny centre blob and the viewport frame would always overhang the map.
-    val worldPad = 40f
-    val worldW = max(1f, bounds.width + worldPad * 2)
-    val worldH = max(1f, bounds.height + worldPad * 2)
+    // Keep the thumbnail in the same world space as the main canvas. The transform maps between
+    // world/content coordinates and thumbnail pixels; no caller has to know about screen density.
+    val density = LocalDensity.current
+    val transform = remember(bounds, density) { MinimapTransform(bounds, density) }
     // Contain-fit the world inside a fixed footprint (140×120 dp max) while preserving its
     // aspect ratio exactly — a clamped fixed dimension would stretch wide/tall boards and put
     // every node at the wrong place. The map's own ratio therefore always equals the world's.
-    val worldAspect = worldW / worldH
+    val worldAspect = transform.worldWidth / transform.worldHeight
     val mapW: Dp
     val mapH: Dp
     if (worldAspect >= 140f / 120f) {
@@ -504,61 +524,49 @@ private fun CanvasMinimap(
                 // is cancelled (standard two-detector pattern on the same node).
                 // Map taps/drags into WORLD coordinates (node cluster + margin); the parent's
                 // callbacks expect content-box coordinates, so add back the PAD→worldPad shift.
-                .pointerInput(worldW, worldH) {
-                    val toContentX = { worldX: Float -> worldX + PAD - worldPad }
-                    val toContentY = { worldY: Float -> worldY + PAD - worldPad }
+                .pointerInput(transform) {
                     detectTapGestures { pos ->
-                        onNavigate(
-                            toContentX(pos.x / size.width * worldW),
-                            toContentY(pos.y / size.height * worldH)
-                        )
+                        val content = transform.mapToContent(pos, size.width.toFloat(), size.height.toFloat())
+                        onNavigate(content.x, content.y)
                     }
                 }
-                .pointerInput(worldW, worldH) {
+                .pointerInput(transform) {
                     detectDragGestures(
                         onDragStart = { pos ->
-                            onNavigate(
-                                (pos.x / size.width * worldW) + PAD - worldPad,
-                                (pos.y / size.height * worldH) + PAD - worldPad
-                            )
+                            val content = transform.mapToContent(pos, size.width.toFloat(), size.height.toFloat())
+                            onNavigate(content.x, content.y)
                         },
                         onDrag = { change, dragAmount ->
                             change.consume()
-                            // The world↔content shift is constant, so a drag delta is identical
-                            // in both spaces — no conversion needed here.
-                            onPanBy(
-                                dragAmount.x / size.width * worldW,
-                                dragAmount.y / size.height * worldH
-                            )
+                            val delta = transform.mapDelta(dragAmount, size.width.toFloat(), size.height.toFloat())
+                            onPanBy(delta.x, delta.y)
                         }
                     )
                 }
         ) {
-            // One uniform scale: the map keeps the world's aspect ratio, so x and y scale by the
-            // same factor and the map is a faithful (un-stretched) miniature of the canvas.
-            val s = min(size.width / worldW, size.height / worldH)
+            // Draw everything through the same normalized transform. Canvas itself reports pixels,
+            // while node positions, rendered sizes, and the main canvas offsets are dp-like world
+            // units; the transform handles that boundary once and consistently.
             for (node in nodes) {
                 val kind = NodeKinds.normalize(node.kind)
-                val x = (node.position.x.toFloat() - bounds.minX + worldPad) * UNIT_DP * s
-                val y = (node.position.y.toFloat() - bounds.minY + worldPad) * UNIT_DP * s
-                val color = parseNodeColor(node.color, Color(0xFF2A3B5C))
+                val topLeft = transform.nodeTopLeft(node, size)
                 val (nw, nh) = if (NodeKinds.NOTE_KINDS.contains(kind))
                     noteRenderSize(node) else nodeRenderSize(node)
-                val w = max(2f, nw * s)
-                val h = max(2f, nh * s)
+                val nodeSize = transform.mapSize(nw, nh, size)
+                val color = parseNodeColor(node.color, Color(0xFF2A3B5C))
                 if (NodeKinds.GROUP_KINDS.contains(kind)) {
                     drawRoundRect(
                         color = color.copy(alpha = 0.5f),
-                        topLeft = Offset(x, y),
-                        size = Size(w, h),
+                        topLeft = topLeft,
+                        size = nodeSize,
                         cornerRadius = CornerRadius(2f),
                         style = Stroke(width = 1f)
                     )
                 } else {
                     drawRoundRect(
                         color = color,
-                        topLeft = Offset(x, y),
-                        size = Size(w, h),
+                        topLeft = topLeft,
+                        size = nodeSize,
                         cornerRadius = CornerRadius(2f)
                     )
                 }
@@ -574,8 +582,8 @@ private fun CanvasMinimap(
             val vH = canvasSize.height / scale
             drawRect(
                 color = Color.White.copy(alpha = 0.9f),
-                topLeft = Offset((vLeft - PAD + worldPad) * s, (vTop - PAD + worldPad) * s),
-                size = Size(vW * s, vH * s),
+                topLeft = transform.contentToMap(Offset(vLeft, vTop), size),
+                size = transform.mapSize(vW, vH, size),
                 style = Stroke(width = 1.5f)
             )
         }
@@ -632,7 +640,7 @@ private fun StickyNoteCard(
             .padding(10.dp)
     ) {
         Text(
-            text = node.title.ifBlank { "Note" },
+            text = node.title.ifBlank { stringResource(R.string.note) },
             fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,
             lineHeight = 17.sp,
@@ -685,7 +693,7 @@ private fun GroupContainerCard(
             )
             Spacer(Modifier.width(7.dp))
             Text(
-                text = node.title.ifBlank { "Group" },
+                text = node.title.ifBlank { stringResource(R.string.group_title) },
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
                 maxLines = 1,
@@ -696,7 +704,7 @@ private fun GroupContainerCard(
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "group",
+            text = stringResource(R.string.group),
             fontSize = 9.sp,
             letterSpacing = 0.5.sp,
             color = Color.White.copy(alpha = 0.45f)
@@ -834,6 +842,65 @@ private fun nodeBounds(nodes: List<CanvasNode>): Bounds {
 }
 
 private data class Bounds(val minX: Float, val minY: Float, val width: Float, val height: Float)
+
+/**
+ * Single source of truth for the thumbnail's coordinate system. The main canvas stores positions
+ * in dp-like world units; this class converts that world into minimap pixels and back for input.
+ */
+private class MinimapTransform(
+    private val bounds: Bounds,
+    private val density: Density,
+    private val worldPad: Float = 40f
+) {
+    val worldWidth: Float = max(1f, bounds.width + worldPad * 2)
+    val worldHeight: Float = max(1f, bounds.height + worldPad * 2)
+
+    fun mapToContent(point: Offset, mapWidthPx: Float, mapHeightPx: Float): Offset {
+        if (mapWidthPx <= 0f || mapHeightPx <= 0f) return Offset.Zero
+        return Offset(
+            point.x / mapWidthPx * worldWidth + PAD - worldPad,
+            point.y / mapHeightPx * worldHeight + PAD - worldPad
+        )
+    }
+
+    fun mapDelta(delta: Offset, mapWidthPx: Float, mapHeightPx: Float): Offset {
+        if (mapWidthPx <= 0f || mapHeightPx <= 0f) return Offset.Zero
+        return Offset(
+            delta.x / mapWidthPx * worldWidth,
+            delta.y / mapHeightPx * worldHeight
+        )
+    }
+
+    fun nodeTopLeft(node: CanvasNode, mapSize: Size): Offset {
+        val scale = mapScale(mapSize)
+        return Offset(
+            with(density) { (node.position.x.toFloat() - bounds.minX + worldPad).dp.toPx() } * scale,
+            with(density) { (node.position.y.toFloat() - bounds.minY + worldPad).dp.toPx() } * scale
+        )
+    }
+
+    fun mapSize(width: Float, height: Float, mapSize: Size): Size {
+        val scale = mapScale(mapSize)
+        return Size(
+            max(2f, with(density) { width.dp.toPx() } * scale),
+            max(2f, with(density) { height.dp.toPx() } * scale)
+        )
+    }
+
+    fun contentToMap(point: Offset, mapSize: Size): Offset {
+        val scale = mapScale(mapSize)
+        return Offset(
+            with(density) { (point.x - PAD + worldPad).dp.toPx() } * scale,
+            with(density) { (point.y - PAD + worldPad).dp.toPx() } * scale
+        )
+    }
+
+    private fun mapScale(mapSize: Size): Float {
+        val worldWidthPx = with(density) { worldWidth.dp.toPx() }
+        val worldHeightPx = with(density) { worldHeight.dp.toPx() }
+        return min(mapSize.width / worldWidthPx, mapSize.height / worldHeightPx)
+    }
+}
 
 /** A node the user double-tapped to focus on; double-tapping it again returns to Fit. */
 private data class FocusTarget(val nodeId: String)
