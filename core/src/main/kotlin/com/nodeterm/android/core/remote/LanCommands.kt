@@ -85,14 +85,39 @@ object LanCommands {
         }
     }
 
+    /**
+     * Cap the bytes a file read can transfer over the SSH channel. The viewer renders at most
+     * `MAX_TEXT_CHARS` (400_000) anyway, so shipping a 50MB minified bundle or a node_modules
+     * dump buys nothing but a stalled control connection and a frozen renderer.
+     */
+    const val MAX_FILE_BYTES = 512_000L
+
     /** `ls -Ap1 <path>` — the same probe ssh-fs.ts runs (folders carry a trailing slash). */
     fun lsCommand(path: String): String = "ls -Ap1 ${posixQuote(path)}"
 
-    /** `cat <path>` for read-only text browsing. */
-    fun catCommand(path: String): String = "cat ${posixQuote(path)}"
+    /**
+     * `cat <path>` for read-only text browsing, capped at [MAX_FILE_BYTES] so the SSH channel
+     * never streams a multi-megabyte file for a viewer that renders 400KB. POSIX-`wc -c` guards
+     * the fast path (`cat` outright when the file is small); the slow path pipes through
+     * `head -c`, whose exit status is the pipeline's (0) so callers' success checks stay valid.
+     */
+    fun catCommand(path: String): String {
+        val p = posixQuote(path)
+        return "if [ \"\$(wc -c < $p 2>/dev/null)\" -gt $MAX_FILE_BYTES ] 2>/dev/null; " +
+            "then cat $p 2>/dev/null | head -c $MAX_FILE_BYTES; " +
+            "else cat $p 2>/dev/null; fi"
+    }
 
-    /** `base64 <path>` for read-only binary browsing. */
-    fun base64Command(path: String): String = "base64 ${posixQuote(path)}"
+    /**
+     * `base64 <path>` for read-only binary browsing, capped at [MAX_FILE_BYTES] before encoding
+     * (base64 would otherwise inflate a huge file by ~33% before the viewer ever sees it).
+     */
+    fun base64Command(path: String): String {
+        val p = posixQuote(path)
+        return "if [ \"\$(wc -c < $p 2>/dev/null)\" -gt $MAX_FILE_BYTES ] 2>/dev/null; " +
+            "then head -c $MAX_FILE_BYTES $p 2>/dev/null | base64; " +
+            "else base64 $p 2>/dev/null; fi"
+    }
 
     /**
      * Attach-or-create the node's tmux session as a PTY client (the phone's terminal). `-A`

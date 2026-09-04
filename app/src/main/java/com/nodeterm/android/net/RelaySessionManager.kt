@@ -64,6 +64,8 @@ class RelaySessionManager(
     private var transport: RelaySocket.Transport? = null
     private var syncing = false
     private var pollJob: Job? = null
+    /** True while a `projects.list` round-trip is in flight — skips overlapping polls. */
+    private var projectsInFlight = false
     /** Fires if the E2EE handshake never completes (host never joins the token room). */
     private var handshakeTimeoutJob: Job? = null
     private var readyFired = false
@@ -430,6 +432,8 @@ class RelaySessionManager(
     }
 
     private fun refreshProjects() {
+        if (projectsInFlight) return
+        projectsInFlight = true
         scope.launch {
             try {
                 val body = socket?.rpc("projects.list")
@@ -444,6 +448,8 @@ class RelaySessionManager(
                 )
             } catch (e: RpcException) {
                 onEvent(HostSession.SessionEvent.Error(e.message ?: "projects.list failed"))
+            } finally {
+                projectsInFlight = false
             }
         }
     }

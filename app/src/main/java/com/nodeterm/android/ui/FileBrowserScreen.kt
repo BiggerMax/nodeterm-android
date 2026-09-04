@@ -203,7 +203,10 @@ private fun FileViewer(viewer: FileViewerState, onBack: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(viewer.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    if (viewer.isBinary) "binary · ${viewer.size} B" else "${viewer.size} chars · read-only",
+                    if (viewer.isBinary)
+                        stringResource(R.string.viewer_binary_size, viewer.size)
+                    else
+                        stringResource(R.string.viewer_text_size_readonly, viewer.size),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -639,9 +642,9 @@ private fun DiffView(diff: GitDiffState, onBack: () -> Unit) {
                 Text(diff.change.path, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     when {
-                        diff.untracked -> "untracked · read-only"
-                        diff.staged -> "staged · read-only"
-                        else -> "unstaged · read-only"
+                        diff.untracked -> stringResource(R.string.diff_untracked_readonly)
+                        diff.staged -> stringResource(R.string.diff_staged_readonly)
+                        else -> stringResource(R.string.diff_unstaged_readonly)
                     },
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

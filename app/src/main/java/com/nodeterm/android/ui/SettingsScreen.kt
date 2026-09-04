@@ -110,7 +110,7 @@ fun SettingsScreen(
 
         SectionTitle(stringResource(R.string.settings_session))
         InfoRow(stringResource(R.string.label_connection), if (state.connected) stringResource(R.string.state_connected) else stringResource(R.string.state_disconnected))
-        InfoRow("Channel SAS", if (state.sas.isBlank()) "—" else state.sas, monospace = true)
+        InfoRow(stringResource(R.string.settings_channel_sas), if (state.sas.isBlank()) "—" else state.sas, monospace = true)
         // The transport this session rides on — relay URL or the free-tier LAN/SSH endpoint.
         if (state.relayEndpoint.isNotBlank()) {
             InfoRow(
@@ -168,11 +168,31 @@ fun SettingsScreen(
         // muscle memory, mapped onto touch. Each row names the desktop action and the gesture.
         Spacer(Modifier.height(16.dp))
         SectionTitle(stringResource(R.string.shortcuts_gestures))
-        ShortcutRow(Icons.Outlined.Search, "Jump anywhere (⌘K)", "Tap the search icon in the home header")
-        ShortcutRow(Icons.Outlined.TouchApp, "Node actions (right-click)", "Long-press a node card")
-        ShortcutRow(Icons.Outlined.CenterFocusStrong, "Focus a canvas node", "Tap an agent, or double-tap another node")
-        ShortcutRow(Icons.Outlined.SwapVert, "Scroll terminal history", "Swipe up / down in the terminal")
-        ShortcutRow(Icons.Outlined.Mic, "Dictate (⌘⇧D)", "Tap the mic in a terminal — review, then send")
+        ShortcutRow(
+            Icons.Outlined.Search,
+            stringResource(R.string.shortcut_jump_title),
+            stringResource(R.string.shortcut_jump_hint)
+        )
+        ShortcutRow(
+            Icons.Outlined.TouchApp,
+            stringResource(R.string.shortcut_node_actions_title),
+            stringResource(R.string.shortcut_node_actions_hint)
+        )
+        ShortcutRow(
+            Icons.Outlined.CenterFocusStrong,
+            stringResource(R.string.shortcut_focus_canvas_title),
+            stringResource(R.string.shortcut_focus_canvas_hint)
+        )
+        ShortcutRow(
+            Icons.Outlined.SwapVert,
+            stringResource(R.string.shortcut_scroll_history_title),
+            stringResource(R.string.shortcut_scroll_history_hint)
+        )
+        ShortcutRow(
+            Icons.Outlined.Mic,
+            stringResource(R.string.shortcut_dictate_title),
+            stringResource(R.string.shortcut_dictate_hint)
+        )
         Spacer(Modifier.height(16.dp))
         HorizontalDivider()
 

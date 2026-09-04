@@ -168,4 +168,41 @@
     <string name="keyboard_paste">粘贴</string>
     <string name="keyboard_mode_zh">中</string>
     <string name="keyboard_mode_en">EN</string>
+
+    <!-- 设置 · 会话信息 -->
+    <string name="settings_channel_sas">通道 SAS</string>
+    <!-- 设置 · 快捷键与手势 -->
+    <string name="shortcut_jump_title">跳转到任意位置 (⌘K)</string>
+    <string name="shortcut_jump_hint">点击首页顶部的搜索图标</string>
+    <string name="shortcut_node_actions_title">节点操作（右键）</string>
+    <string name="shortcut_node_actions_hint">长按节点卡片</string>
+    <string name="shortcut_focus_canvas_title">聚焦画布节点</string>
+    <string name="shortcut_focus_canvas_hint">点按 agent，或双击另一个节点</string>
+    <string name="shortcut_scroll_history_title">滚动终端历史</string>
+    <string name="shortcut_scroll_history_hint">在终端中上下滑动</string>
+    <string name="shortcut_dictate_title">语音输入 (⌘⇧D)</string>
+    <string name="shortcut_dictate_hint">点按终端中的麦克风——确认后发送</string>
+    <!-- 组件 -->
+    <string name="context">上下文</string>
+<string name="context_percent">%1$d%%</string>
+
+    <!-- 文件浏览 · 查看器 -->
+    <string name="viewer_binary_size">二进制 · %1$d B</string>
+    <string name="viewer_text_size_readonly">%1$d 个字符 · 只读</string>
+    <!-- 文件浏览 · 差异 -->
+    <string name="diff_untracked_readonly">未跟踪 · 只读</string>
+    <string name="diff_staged_readonly">已暂存 · 只读</string>
+    <string name="diff_unstaged_readonly">未暂存 · 只读</string>
+
+    <!-- 会话错误/通知 · 配对与连接 -->
+    <string name="pairing_failed">配对失败：%1$s — 返回并使用新配对码重试。</string>
+    <string name="pairing_failed_unknown">未知错误</string>
+    <string name="not_connected">未连接</string>
+    <string name="unreadable">无法读取</string>
+    <string name="approval_answered">审批已回复。</string>
+    <string name="disconnect_manual">你已从主机断开。</string>
+
+    <string name="pairing_code_unrecognized">无法识别的配对码——请扫描或粘贴新的配对码。</string>
+    <string name="host_address_empty">主机地址不能为空。</string>
+    <string name="no_lan_session">没有可重连的直连 SSH 会话——请先与主机配对。</string>
 </resources>

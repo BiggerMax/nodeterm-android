@@ -1,9 +1,11 @@
 package com.nodeterm.android.ui
 
 import android.app.Application
+import android.content.Context
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nodeterm.android.R
 import com.nodeterm.android.core.e2ee.E2ee
 import com.nodeterm.android.core.e2ee.SshKeys
 import com.nodeterm.android.core.model.CanvasNode
@@ -36,6 +38,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private fun Context.stringRes(id: Int, vararg args: Any): String =
+    resources.getString(id, *args)
 
 enum class Phase { NO_SESSION, CONNECTING, SAS_CONFIRM, READY, DISCONNECTED }
 
@@ -162,6 +167,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = SessionStore(application)
     private val uiPrefs = UiPrefsStore(application)
+    private val app = application
     private val scope = viewModelScope
 
     // ---- local list editing (swipe-delete / drag-reorder / clear inbox) -----------------------
@@ -186,6 +192,9 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
     /** Non-null while the session runs on the direct LAN / SSH transport (free tier — no relay). */
     private var lanSession: SessionStore.LanSession? = null
     private val streamParsers = HashMap<Int, VtParser>()
+    /** Coalesces terminal redraws: true while a post-burst flush is already scheduled (see
+     *  [scheduleTerminalRedraw]); set/cleared only on the main thread. */
+    private var terminalRedrawScheduled = false
     private var canvasNodes: List<CanvasNode> = emptyList()
     /** Debounces the host-side pty resize while the IME animation resizes the viewport frame by frame. */
     private var resizeJob: kotlinx.coroutines.Job? = null
@@ -250,7 +259,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         val trimmed = text.trim()
         PairingCodec.decodeOffer(trimmed)?.let { pair(it); return true }
         HostPairingCodec.decodePayload(trimmed)?.let { payload -> pairViaHostPayload(payload); return true }
-        _ui.update { it.copy(error = "Unrecognized pairing code — scan or paste a fresh one.") }
+        _ui.update { it.copy(error = app.stringRes(R.string.pairing_code_unrecognized)) }
         return false
     }
 
@@ -328,7 +337,10 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 _ui.update {
                     it.copy(
                         phase = Phase.NO_SESSION,
-                        error = "Pairing failed: ${e.message ?: "unknown error"} — go back and retry with a fresh code."
+                        error = app.stringRes(
+                            R.string.pairing_failed,
+                            e.message ?: app.stringRes(R.string.pairing_failed_unknown)
+                        )
                     )
                 }
             }
@@ -379,6 +391,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         // any previous stream before attaching a new one (no more than one live stream at a time).
         _ui.value.terminal?.streamId?.let { sid -> manager?.ptyKill(sid) }
         streamParsers.clear()
+        terminalRedrawScheduled = false
         _ui.update {
             it.copy(
                 terminal = TerminalState(
@@ -423,6 +436,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         // streaming output (and releases the detached pty) once the terminal screen is gone.
         _ui.value.terminal?.streamId?.let { sid -> manager?.ptyKill(sid) }
         streamParsers.clear()
+        terminalRedrawScheduled = false
         _ui.update { it.copy(terminal = null) }
     }
 
@@ -472,7 +486,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
     fun listDir(path: String) {
         if (manager == null) {
             _ui.update { st ->
-                st.copy(browser = st.browser?.copy(path = path, loading = false, error = "Not connected"))
+                st.copy(browser = st.browser?.copy(path = path, loading = false, error = app.stringRes(R.string.not_connected)))
             }
             return
         }
@@ -511,7 +525,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                     _ui.update { st ->
                         val v = st.viewer ?: return@update st
                         if (bytes != null) st.copy(viewer = v.copy(bytes = bytes, loading = false))
-                        else st.copy(viewer = v.copy(loading = false, error = binErr ?: err ?: "unreadable"))
+                        else st.copy(viewer = v.copy(loading = false, error = binErr ?: err ?: app.stringRes(R.string.unreadable)))
                     }
                 }
             }
@@ -530,7 +544,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openGit(cwd: String) {
         if (manager == null) {
-            _ui.update { it.copy(git = GitState(cwd = cwd, loading = false, error = "Not connected")) }
+            _ui.update { it.copy(git = GitState(cwd = cwd, loading = false, error = app.stringRes(R.string.not_connected))) }
             return
         }
         _ui.update { it.copy(git = GitState(cwd = cwd, loading = true), gitDiff = null) }
@@ -567,7 +581,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     gitDiff = GitDiffState(
                         cwd = g.cwd, change = change, staged = staged,
-                        untracked = change.isUntracked, loading = false, error = "Not connected"
+                        untracked = change.isUntracked, loading = false, error = app.stringRes(R.string.not_connected)
                     )
                 )
             }
@@ -599,7 +613,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
     /** Approve/deny a held approval; the manager tries the host RPC, else send-keys. */
     fun answerApproval(nodeId: String, pendingId: String?, decision: String) {
         manager?.answerApproval(nodeId, pendingId, decision) { ok, message ->
-            _ui.update { it.copy(notice = if (ok) "Approval answered." else message) }
+            _ui.update { it.copy(notice = if (ok) app.stringRes(R.string.approval_answered) else message) }
             if (ok) {
                 // Optimistic: remove the answered card; the next poll confirms. Recompute board
                 // previews so a card doesn't keep showing the just-answered event's snippet.
@@ -688,11 +702,11 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
     fun updateLanHost(host: String): Boolean {
         val clean = host.trim()
         if (clean.isEmpty()) {
-            _ui.update { it.copy(error = "Host address can't be empty.") }
+            _ui.update { it.copy(error = app.stringRes(R.string.host_address_empty)) }
             return false
         }
         val lan = store.loadLan() ?: run {
-            _ui.update { it.copy(error = "No direct SSH session to reconnect — pair with your host first.") }
+            _ui.update { it.copy(error = app.stringRes(R.string.no_lan_session)) }
             return false
         }
         if (clean == lan.host) {
@@ -747,7 +761,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         manager = null
         lanSession = null
         _ui.update {
-            it.copy(connected = false, phase = Phase.DISCONNECTED, disconnectReason = "You disconnected from the host.")
+            it.copy(connected = false, phase = Phase.DISCONNECTED, disconnectReason = app.stringRes(R.string.disconnect_manual))
         }
     }
 
@@ -989,6 +1003,24 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                 // next repaint continues from a sane screen.
                 android.util.Log.w("NodetermVt", "parser feed failed stream=$sid kind=${event.kind}", e)
             }
+            // Coalesced below: bump `generation` once per main-loop pass, not per chunk.
+            scheduleTerminalRedraw(sid)
+        }
+    }
+
+    /**
+     * Terminal output arrives in bursts (one [HostSession.SessionEvent.StreamData] per transport
+     * chunk). Bumping `generation` per chunk meant one recomposition + full-grid repaint per
+     * chunk; the screen mutates in place, so a single redraw per main-loop pass paints the whole
+     * burst's result. [Dispatchers.Main] (non-immediate) defers the flush until the current burst
+     * of [Dispatchers.Main.immediate] hops drains, so all chunks coalesce into one redraw.
+     */
+    private fun scheduleTerminalRedraw(sid: Int) {
+        if (_ui.value.terminal?.streamId != sid) return
+        if (terminalRedrawScheduled) return
+        terminalRedrawScheduled = true
+        viewModelScope.launch(Dispatchers.Main) {
+            terminalRedrawScheduled = false
             _ui.update { st ->
                 val t = st.terminal
                 if (t?.streamId == sid) st.copy(
@@ -998,87 +1030,10 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * The most recent inbox snippet per node (detail preferred, title as fallback), shown on board
-     * cards as a mini terminal preview. Newest wins on `ts`; equal timestamps defer to list order
-     * (the mirror publishes events newest-first, so the later entry is treated as newer).
-     */
-    private fun latestSnippets(inbox: List<InboxEvent>): Map<String, String> {
-        val latestTs = HashMap<String, Long>()
-        val snippets = HashMap<String, String>()
-        for (ev in inbox) {
-            if (ev.nodeId.isBlank()) continue
-            val snippet = ev.detail?.takeIf { it.isNotBlank() } ?: ev.title.takeIf { it.isNotBlank() } ?: continue
-            val prev = latestTs[ev.nodeId]
-            if (prev == null || ev.ts >= prev) {
-                latestTs[ev.nodeId] = ev.ts
-                snippets[ev.nodeId] = snippet.trim()
-            }
-        }
-        return snippets
-    }
-
     private fun buildNodes(projects: List<Project>): List<NodeRow> {
-        val nodes = mutableListOf<NodeRow>()
-        projects.forEach { project ->
-            project.nodes.forEach { node ->
-                nodes.add(
-                    NodeRow(
-                        nodeId = node.id,
-                        title = node.title,
-                        kind = node.kind,
-                        agentId = node.agentId,
-                        cwd = node.cwd,
-                        projectName = project.name,
-                        color = node.color
-                    )
-                )
-            }
-        }
-        // Ordering/filtering (dismissed + custom drag order) is a pure function in NodeListOrder.
-        return orderNodes(nodes, _ui.value.status, dismissedNodes, nodeOrder)
-    }
-
-    /** Resolve the active project's Trello-style kanban board for the mobile board view. */
-    private fun buildKanban(
-        projects: List<Project>,
-        activeProjectId: String,
-        sessionNodeIds: List<String>
-    ): KanbanView? {
-        val active = projects.firstOrNull { p -> p.id == activeProjectId } ?: projects.firstOrNull()
-            ?: return null
-        val k = active.kanban
-        val columns = Kanban.columns(k)
-        val assignments = k?.assignments
-            ?.filter { a -> columns.any { c -> c.id == a.columnId } }
-            ?.associateTo(LinkedHashMap()) { it.nodeId to it.columnId }
-            ?: emptyMap()
-        return KanbanView(
-            activeProjectName = active.name.ifBlank { active.id },
-            columns = columns,
-            assignments = assignments,
-            ungrouped = Kanban.unassigned(k, sessionNodeIds),
-            meta = (k?.meta ?: emptyList()).associateBy { it.nodeId },
-            labels = k?.labels ?: emptyList()
-        )
-    }
-
-    private fun normalizeSnapshotNewlines(bytes: ByteArray): ByteArray {
-        // capture-pane joins rows with bare \n; feed \r\n so each row starts at col 0.
-        // Normalise any existing CRLF first so it is never double-converted.
-        return String(bytes, Charsets.UTF_8)
-            .replace("\r\n", "\n")
-            .replace("\n", "\r\n")
-            .toByteArray(Charsets.UTF_8)
-    }
-
-    private fun parentPath(path: String): String? {
-        val trimmed = path.trimEnd('/')
-        if (trimmed.isEmpty() || trimmed == "/") return "/"
-        val idx = trimmed.lastIndexOf('/')
-        if (idx < 0) return null
-        val parent = trimmed.substring(0, idx)
-        return parent.ifEmpty { "/" }
+        // Pure read-models live in ReadModels.kt; ordering/filtering (dismissed + custom drag
+        // order) is a pure function in NodeListOrder.
+        return orderNodes(buildNodesRaw(projects), _ui.value.status, dismissedNodes, nodeOrder)
     }
 
     private companion object {

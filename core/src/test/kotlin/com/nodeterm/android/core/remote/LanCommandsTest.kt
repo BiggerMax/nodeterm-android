@@ -298,8 +298,16 @@ class LanCommandsTest {
     // ---- file read ----------------------------------------------------------------------------
 
     @Test
-    fun catAndBase64QuotePaths() {
-        assertEquals("cat '/work/a b.txt'", LanCommands.catCommand("/work/a b.txt"))
-        assertEquals("base64 '/work/a b.txt'", LanCommands.base64Command("/work/a b.txt"))
+    fun catAndBase64QuotePathsAndCapLargeFiles() {
+        // The path stays posix-quoted (spaces survive)…
+        val cat = LanCommands.catCommand("/work/a b.txt")
+        assertTrue(cat.contains("'/work/a b.txt'"), cat)
+        assertTrue(cat.contains("head -c ${LanCommands.MAX_FILE_BYTES}"), cat)
+        val b64 = LanCommands.base64Command("/work/a b.txt")
+        assertTrue(b64.contains("'/work/a b.txt'"), b64)
+        assertTrue(b64.contains("head -c ${LanCommands.MAX_FILE_BYTES}"), b64)
+        // …and both end with a `fi` (the size guard closes).
+        assertTrue(cat.trim().endsWith("fi"), cat)
+        assertTrue(b64.trim().endsWith("fi"), b64)
     }
 }

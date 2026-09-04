@@ -168,4 +168,41 @@
     <string name="keyboard_paste">Paste</string>
     <string name="keyboard_mode_zh">中</string>
     <string name="keyboard_mode_en">EN</string>
+
+    <!-- 设置 · 会话信息 -->
+    <string name="settings_channel_sas">Channel SAS</string>
+    <!-- 设置 · 快捷键与手势 -->
+    <string name="shortcut_jump_title">Jump anywhere (⌘K)</string>
+    <string name="shortcut_jump_hint">Tap the search icon in the home header</string>
+    <string name="shortcut_node_actions_title">Node actions (right-click)</string>
+    <string name="shortcut_node_actions_hint">Long-press a node card</string>
+    <string name="shortcut_focus_canvas_title">Focus a canvas node</string>
+    <string name="shortcut_focus_canvas_hint">Tap an agent, or double-tap another node</string>
+    <string name="shortcut_scroll_history_title">Scroll terminal history</string>
+    <string name="shortcut_scroll_history_hint">Swipe up / down in the terminal</string>
+    <string name="shortcut_dictate_title">Dictate (⌘⇧D)</string>
+    <string name="shortcut_dictate_hint">Tap the mic in a terminal — review, then send</string>
+    <!-- 组件 -->
+    <string name="context">Context</string>
+<string name="context_percent">%1$d%%</string>
+
+    <!-- 文件浏览 · 查看器 -->
+    <string name="viewer_binary_size">binary · %1$d B</string>
+    <string name="viewer_text_size_readonly">%1$d chars · read-only</string>
+    <!-- 文件浏览 · 差异 -->
+    <string name="diff_untracked_readonly">untracked · read-only</string>
+    <string name="diff_staged_readonly">staged · read-only</string>
+    <string name="diff_unstaged_readonly">unstaged · read-only</string>
+
+    <!-- 会话错误/通知 · 配对与连接 -->
+    <string name="pairing_failed">Pairing failed: %1$s — go back and retry with a fresh code.</string>
+    <string name="pairing_failed_unknown">unknown error</string>
+    <string name="not_connected">Not connected</string>
+    <string name="unreadable">unreadable</string>
+    <string name="approval_answered">Approval answered.</string>
+    <string name="disconnect_manual">You disconnected from the host.</string>
+
+    <string name="pairing_code_unrecognized">Unrecognized pairing code — scan or paste a fresh one.</string>
+    <string name="host_address_empty">Host address can\'t be empty.</string>
+    <string name="no_lan_session">No direct SSH session to reconnect — pair with your host first.</string>
 </resources>

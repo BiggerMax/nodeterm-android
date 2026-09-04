@@ -64,6 +64,8 @@ class LanSessionManager(
     private var userDataDir: String? = null
     private var syncing = false
     private var pollJob: Job? = null
+    /** True while a workspace sync is in flight — skips overlapping polls. */
+    private var projectsInFlight = false
     /** One-shot notice: the host's project files could not be read over SSH (macOS TCC etc.). */
     private var reportedUnreadableProjects = false
     /** nodeId → project cwd, filled from each projects sync; used to start new tmux sessions. */
@@ -175,7 +177,9 @@ class LanSessionManager(
     // ---- projects + status --------------------------------------------------------------------
 
     private fun refreshProjects() {
-        val c = client ?: return
+        if (projectsInFlight) return
+        projectsInFlight = true
+        val c = client ?: run { projectsInFlight = false; return }
         scope.launch(Dispatchers.IO) {
             try {
                 var dir = userDataDir
@@ -232,6 +236,8 @@ class LanSessionManager(
                 // every poll while the UI sits in a stale READY state with no recovery path.
                 Log.w(TAG, "lan control connection lost during sync — reconnecting", e)
                 reconnect()
+            } finally {
+                projectsInFlight = false
             }
         }
     }
@@ -362,7 +368,7 @@ class LanSessionManager(
                 out.flush()
                 // Stream the client's output until the shell (or the connection) dies.
                 val reader = shell.inputStream
-                val buf = ByteArray(8192)
+                val buf = ByteArray(32_768)
                 while (true) {
                     val n = reader.read(buf)
                     if (n < 0) break

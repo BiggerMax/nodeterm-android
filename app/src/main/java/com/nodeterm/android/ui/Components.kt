@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.nodeterm.android.R
 import com.nodeterm.android.core.model.NodeStatus
 
 /**
@@ -187,13 +189,13 @@ fun ContextMeter(
         if (showPercent) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Context",
+                    stringResource(R.string.context),
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    "$percent%",
+                    stringResource(R.string.context_percent, percent),
                     fontSize = 10.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                     color = contextColor(percent)
