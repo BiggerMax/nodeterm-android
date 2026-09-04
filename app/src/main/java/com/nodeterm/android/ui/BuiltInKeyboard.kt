@@ -186,14 +186,15 @@ fun BuiltInKeyboard(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(horizontal = 3.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         // Input line — exactly what the send key will ship to the pty; composing pinyin in color.
+        // Compact single line so the terminal viewport keeps as many rows as possible.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 2.dp),
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -203,7 +204,7 @@ fun BuiltInKeyboard(
                         withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append(composing) }
                     }
                 },
-                fontSize = 15.sp,
+                fontSize = 13.sp,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -217,8 +218,8 @@ fun BuiltInKeyboard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 candidates.forEach { cand -> CandidateChip(cand.word) { onSelectCandidate(cand) } }
             }
@@ -232,20 +233,20 @@ fun BuiltInKeyboard(
             SymbolKeyRow("()_=+[]{}\\|", onChar, onBackspace)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 "';:\",./?".forEach { ch ->
-                    KeyButton(ch.toString(), { onChar(ch.toString()) }, Modifier.weight(1f).height(46.dp))
+                    KeyButton(ch.toString(), { onChar(ch.toString()) }, Modifier.weight(1f).height(KeyHeight))
                 }
             }
         } else {
             SymbolKeyRow("1234567890", onChar, onBackspace, trailingBackspace = true)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 KeyRow("qwertyuiop", onChar)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 KeyRow("asdfghjkl", onChar)
             }
@@ -254,34 +255,37 @@ fun BuiltInKeyboard(
         // Bottom letter row, then the utility row: symbols toggle + EN/中 + space + send.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             KeyRow("zxcvbnm", onChar)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             KeyButton(
                 if (symbolsPage) "ABC" else "?123",
                 { symbolsPage = !symbolsPage },
-                Modifier.weight(1.4f).height(46.dp)
+                Modifier.weight(1.4f).height(KeyHeight)
             )
             KeyButton(
                 stringResource(if (pinyinMode) R.string.keyboard_mode_zh else R.string.keyboard_mode_en),
                 onToggleMode,
-                Modifier.weight(1.4f).height(46.dp)
+                Modifier.weight(1.4f).height(KeyHeight)
             )
-            SpaceKey(spaceAction, Modifier.weight(3.4f).height(46.dp))
+            SpaceKey(spaceAction, Modifier.weight(3.4f).height(KeyHeight))
             KeyButton(
                 stringResource(R.string.keyboard_send),
                 onSendLine,
-                Modifier.weight(2f).height(46.dp),
+                Modifier.weight(2f).height(KeyHeight),
                 emphasized = true
             )
         }
     }
 }
+
+/** Compact key height so the terminal viewport keeps more rows (was 46.dp). */
+private val KeyHeight = 40.dp
 
 /**
  * One-tap control keys (arrows, Esc, Tab, ^C/^D/^Z/^L, paste) — raw sequences straight to the
@@ -299,8 +303,8 @@ fun TerminalShortcutChips(
         modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         QuickKey("Esc") { onSendKey("\u001b") }
         QuickKey("Tab") { onSendKey("\t") }
@@ -325,7 +329,7 @@ fun TerminalShortcutChips(
 @Composable
 private fun RowScope.KeyRow(letters: String, onChar: (String) -> Unit) {
     letters.forEach { ch ->
-        KeyButton(ch.toString(), { onChar(ch.toString()) }, Modifier.weight(1f).height(46.dp))
+        KeyButton(ch.toString(), { onChar(ch.toString()) }, Modifier.weight(1f).height(KeyHeight))
     }
 }
 
@@ -334,13 +338,13 @@ private fun RowScope.KeyRow(letters: String, onChar: (String) -> Unit) {
 private fun SymbolKeyRow(keys: String, onChar: (String) -> Unit, onBackspace: () -> Unit, trailingBackspace: Boolean = false) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         keys.forEach { ch ->
-            KeyButton(ch.toString(), { onChar(ch.toString()) }, Modifier.weight(1f).height(46.dp))
+            KeyButton(ch.toString(), { onChar(ch.toString()) }, Modifier.weight(1f).height(KeyHeight))
         }
         if (trailingBackspace) {
-            RepeatKeyButton("⌫", onBackspace, Modifier.weight(1.3f).height(46.dp))
+            RepeatKeyButton("⌫", onBackspace, Modifier.weight(1.3f).height(KeyHeight))
         }
     }
 }
@@ -443,9 +447,9 @@ private fun CandidateChip(word: String, onClick: () -> Unit) {
             .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
-        Text(word, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
+        Text(word, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -456,11 +460,11 @@ private fun QuickKey(label: String, onClick: () -> Unit) {
             .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 4.dp)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(
             label,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

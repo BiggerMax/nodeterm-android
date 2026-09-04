@@ -213,7 +213,7 @@ fun NodeDetailScreen(
                     Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.background)
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 2.dp)
                 ) {
                     TerminalShortcutChips(
                         onSendKey = { seq -> onSendInput(seq) },

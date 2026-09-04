@@ -681,12 +681,56 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Pull-to-refresh: fetch fresh node/inbox state right now. */
     fun refreshNow() {
+        // After a drop the transports hold a dead client (LAN: client == null, relay:
+        // socket == null) so a plain refresh is a no-op and the header sticks on "已断开"
+        // even after the network recovers — re-establish the session instead.
+        if (_ui.value.phase == Phase.DISCONNECTED) {
+            if (retryConnection()) return
+        }
         manager?.refreshNow()
     }
 
     /** Lifecycle-aware battery saver: pause the 5s polling while backgrounded. */
     fun setPollingEnabled(enabled: Boolean) {
-        manager?.setPollingEnabled(enabled)
+        if (!enabled) {
+            manager?.setPollingEnabled(false)
+            return
+        }
+        // Returning to the foreground after a drop (Wi-Fi blip, host sleep): the network
+        // may be back while the UI still sits in DISCONNECTED with polling stopped —
+        // re-establish the session so the header recovers without an app restart.
+        if (_ui.value.phase == Phase.DISCONNECTED) {
+            if (retryConnection()) return
+        }
+        manager?.setPollingEnabled(true)
+    }
+
+    /**
+     * Re-establish a dropped session (LAN preferred, relay otherwise). Returns true when a
+     * reconnect was kicked off. Never fires after a user-initiated teardown (manual
+     * disconnect / unpair) — that state is intentional until the user acts.
+     */
+    private fun retryConnection(): Boolean {
+        if (userInitiatedTearDown) return false
+        // Drop any stale terminal streams tied to the dead transport.
+        closeTerminal()
+        val lan = lanSession ?: store.loadLan()?.takeIf { store.prefersLan() || lanFallbackArmed }
+        if (lan != null) {
+            lanSession = lan
+            _ui.update {
+                it.copy(phase = Phase.CONNECTING, error = null, disconnectReason = null)
+            }
+            connectLan()
+            return true
+        }
+        if (offer != null && keys != null) {
+            _ui.update {
+                it.copy(phase = Phase.CONNECTING, error = null, disconnectReason = null)
+            }
+            connect()
+            return true
+        }
+        return false
     }
 
     /**
@@ -845,6 +889,7 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                         connected = true,
                         sas = event.sas,
                         notice = null, // clear the relay-unreachable → LAN fallback notice
+                        disconnectReason = null, // a fresh Ready means the drop is over — hide the banner
                         phase = if (confirmed) Phase.READY else Phase.SAS_CONFIRM
                     )
                 }
@@ -871,8 +916,13 @@ class RelayViewModel(application: Application) : AndroidViewModel(application) {
                     else
                         it.board
                     it.copy(
-                        phase = if (it.phase == Phase.CONNECTING) Phase.READY else it.phase,
+                        // A successful sync proves the transport is alive again — recover from
+                        // both CONNECTING (first sync) and DISCONNECTED (self-healed / retried
+                        // after a drop). Otherwise the header keeps showing "已断开" and the
+                        // recovery banner never dismisses even though data is flowing again.
+                        phase = if (it.phase == Phase.CONNECTING || it.phase == Phase.DISCONNECTED) Phase.READY else it.phase,
                         connected = true,
+                        disconnectReason = if (it.phase == Phase.DISCONNECTED) null else it.disconnectReason,
                         projects = newProjects,
                         nodes = buildNodes(newProjects),
                         status = status,
